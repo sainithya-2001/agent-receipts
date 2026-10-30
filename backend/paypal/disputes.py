@@ -6,8 +6,8 @@ from backend.paypal.client import PayPalClient
 
 BASE = "/v1/customer/disputes"
 
-BUYER_FAVOUR = "RESOLVED_BUYER_FAVOUR"
-SELLER_FAVOUR = "RESOLVED_SELLER_FAVOUR"
+BUYER_FAVOUR = "BUYER_FAVOR"
+SELLER_FAVOUR = "SELLER_FAVOR"
 
 
 def list_disputes(client: PayPalClient, **params: Any) -> dict[str, Any]:
