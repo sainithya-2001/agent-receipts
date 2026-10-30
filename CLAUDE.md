@@ -250,11 +250,18 @@ Expose these as a "break the agent" control in the UI.
 
 
 
+\## Current status (update each session)
+\- \*\*Branch:\*\* `day-1` (not yet merged to `main`). Tests: 12 passing (`.venv/Scripts/python -m pytest -q`).
+\- \*\*Done:\*\* Day 1 complete, including the full risk check (order create/capture ✓, buyer-UI dispute → escalate → evidence → adjudicate ✓). Product catalog done.
+\- \*\*Next step:\*\* shopping agent (`backend/agents/shopping.py`), an Anthropic tool-use loop over `search\_products` / `get\_product`, then wire it to PayPal Orders. \*\*Blocked on\*\* the user adding `ANTHROPIC\_API\_KEY` and `ANTHROPIC\_MODEL` to `.env` (suggested: `claude-sonnet-5-5`).
+\- \*\*Deployment:\*\* do no deployment work until Day 11.
+\- \*\*Sandbox state:\*\* dispute PP-R-AAU-10195248 is RESOLVED (seller). New disputes need the sandbox buyer to approve an order and open the dispute in the UI.
+
 \## Build plan (update checkboxes as you go)
 
 \- \[x] \*\*Day 1 (Oct 30):\*\* repo scaffold, `.env.example`, PayPal client with token auth, health route. \*\*Risk check:\*\* create sandbox order + capture; create a sandbox dispute and settle it via adjudicate. Report what worked.
 
-\- \[ ] \*\*Days 2–3:\*\* product catalog + shopping agent + PayPal Orders end to end
+\- \[ ] \*\*Days 2–3:\*\* product catalog + shopping agent + PayPal Orders end to end. \*In progress:\* catalog done (`backend/catalog/`, 20 products; p\_04 = over budget, p\_08 = prompt injection).
 
 \- \[ ] \*\*Days 4–5:\*\* ledger (schema, hash chain, MCP server), agent must log before buying
 
