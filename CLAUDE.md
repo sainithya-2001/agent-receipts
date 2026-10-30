@@ -227,7 +227,10 @@ Expose these as a "break the agent" control in the UI.
 \- Dispute create via API (`POST /v1/customer/disputes`, merchant creds): undocumented. It accepts `disputed\_transactions\[].buyer\_transaction\_id`, then fails with `MISSING\_ISSUE\_TYPE` (no `issue\_type` placement we tried works). Not solved. The buyer txn id is shown in dispute details (`disputed\_transactions\[].buyer\_transaction\_id`).
 \- Buyer-UI fallback works: dispute PP-R-AAU-10195248 appeared in the list API within about a minute. It starts as status `UNDER\_REVIEW` with stage `INQUIRY`, so status alone does not mean it can be adjudicated.
 \- Path that worked: `escalate` (200) → after about 10 s, stage `CHARGEBACK`, status `WAITING\_FOR\_SELLER\_RESPONSE`, links accept-claim/provide-evidence → `provide-evidence` type OTHER (200) → `UNDER\_REVIEW`, link `provide-supporting-info` only.
-\- `adjudicate` enum is `BUYER\_FAVOR` / `SELLER\_FAVOR` (US spelling). It returned `ACTION\_NOT\_ALLOWED\_IN\_CURRENT\_DISPUTE\_STATE` in both INQUIRY and post-evidence UNDER\_REVIEW. Docs also require an `adjudicate` HATEOAS link, which never appeared. \*\*Open risk.\*\*
+\- `adjudicate` enum is `BUYER\_FAVOR` / `SELLER\_FAVOR` (US spelling). The resulting `dispute\_outcome.outcome\_code` uses UK spelling: `RESOLVED\_SELLER\_FAVOUR`.
+\- \*\*Adjudicate works, but only once the dispute has an `adjudicate` link (rel `adjudicate`).\*\* Status `UNDER\_REVIEW` alone is not enough: calls before the link appeared returned `ACTION\_NOT\_ALLOWED\_IN\_CURRENT\_DISPUTE\_STATE`. The link appeared about 25 min after provide-evidence (evidence 04:05Z, link present by 04:31Z). Adjudicate at 05:21Z → 200; status `RESOLVED` about 130 s later.
+\- \*\*Demo implication:\*\* the path is buyer UI dispute → escalate → wait ~10 s → provide-evidence → wait up to ~25 min for the `adjudicate` link → adjudicate → ~2 min to RESOLVED. That's too slow to run live in a 3-min video. Pre-stage disputes in this state before recording, and have the backend poll for the `adjudicate` link (by `rel`) before calling.
+\- Not tested: sandbox `require-evidence` (rel `require\_evidence`, body `action` = `BUYER\_EVIDENCE` / `SELLER\_EVIDENCE`). It was skipped because the dispute was already adjudicable.
 
 
 
@@ -249,7 +252,7 @@ Expose these as a "break the agent" control in the UI.
 
 \## Build plan (update checkboxes as you go)
 
-\- \[ ] \*\*Day 1 (Oct 30):\*\* repo scaffold, `.env.example`, PayPal client with token auth, health route. \*\*Risk check:\*\* create sandbox order + capture; create a sandbox dispute and settle it via adjudicate. Report what worked.
+\- \[x] \*\*Day 1 (Oct 30):\*\* repo scaffold, `.env.example`, PayPal client with token auth, health route. \*\*Risk check:\*\* create sandbox order + capture; create a sandbox dispute and settle it via adjudicate. Report what worked.
 
 \- \[ ] \*\*Days 2–3:\*\* product catalog + shopping agent + PayPal Orders end to end
 
