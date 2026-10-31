@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.agents.llm import cached_system, cached_tools, create_message
+from backend.agents.llm import RefusalError, cached_system, cached_tools, create_message
 
 TOOLS = [
     {"name": "search_products", "description": "a", "input_schema": {"type": "object"}},
@@ -27,7 +27,8 @@ def _fake_client():
     usage = SimpleNamespace(input_tokens=1, output_tokens=1,
                             cache_creation_input_tokens=0, cache_read_input_tokens=0)
     client = MagicMock()
-    client.messages.create.return_value = SimpleNamespace(usage=usage, stop_reason="end_turn")
+    resp = SimpleNamespace(usage=usage, stop_reason="end_turn")
+    client.messages.create.return_value = resp
     return client
 
 
@@ -47,3 +48,11 @@ def test_create_message_requires_model(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
     with pytest.raises(RuntimeError):
         create_message(_fake_client(), system="s", messages=[])
+
+
+def test_create_message_raises_on_refusal(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_MODEL", "test-model")
+    client = _fake_client()
+    client.messages.create.return_value.stop_reason = "refusal"
+    with pytest.raises(RefusalError):
+        create_message(client, system="s", messages=[])

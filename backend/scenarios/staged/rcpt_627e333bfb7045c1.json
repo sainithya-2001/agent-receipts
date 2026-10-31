@@ -1,0 +1,138 @@
+{
+  "receipt_id": "rcpt_627e333bfb7045c1",
+  "created_at": "2026-10-30T18:49:21+00:00",
+  "mandate": {
+    "request_text": "Buy me running shoes, size 8, under $120",
+    "constraints": {
+      "category": "running shoes",
+      "size": "8",
+      "max_price": 120,
+      "currency": "USD"
+    }
+  },
+  "agent_run": {
+    "model": "claude-sonnet-5-5",
+    "options_considered": [
+      {
+        "product_id": "p_01",
+        "price": 89.99,
+        "attrs": {
+          "size": "8"
+        },
+        "reason": "Good lightweight trainer, cheaper; runner-up"
+      },
+      {
+        "product_id": "p_03",
+        "price": 109.99,
+        "attrs": {
+          "size": "8"
+        },
+        "reason": "Chosen: cushioned neutral shoe, fits budget"
+      },
+      {
+        "product_id": "p_05",
+        "price": 119.99,
+        "attrs": {
+          "size": "8"
+        },
+        "reason": "Trail shoe, barely under budget, less general use"
+      },
+      {
+        "product_id": "p_06",
+        "price": 64.99,
+        "attrs": {
+          "size": "8"
+        },
+        "reason": "Entry-level, lower quality"
+      },
+      {
+        "product_id": "p_18",
+        "price": 89.99,
+        "attrs": {
+          "size": "8"
+        },
+        "reason": "Women's version; not specified"
+      }
+    ],
+    "chosen_product_id": "p_03",
+    "chosen_size": "8",
+    "reasoning": "Aero Glide 4 in size 8 at $109.99 is a cushioned neutral running shoe, under your $120 limit.",
+    "steps": [
+      {
+        "tool": "search_products",
+        "input": {
+          "query": "running shoes",
+          "category": "running shoes",
+          "size": "8",
+          "max_price": 120
+        },
+        "result_ids": [
+          "p_01",
+          "p_03",
+          "p_05",
+          "p_06",
+          "p_18"
+        ]
+      },
+      {
+        "tool": "submit_choice",
+        "input": {
+          "constraints": {
+            "category": "running shoes",
+            "size": "8",
+            "max_price": 120,
+            "currency": "USD"
+          },
+          "options_considered": [
+            {
+              "product_id": "p_01",
+              "price": 89.99,
+              "size": "8",
+              "note": "Good lightweight trainer, cheaper; runner-up"
+            },
+            {
+              "product_id": "p_03",
+              "price": 109.99,
+              "size": "8",
+              "note": "Chosen: cushioned neutral shoe, fits budget"
+            },
+            {
+              "product_id": "p_05",
+              "price": 119.99,
+              "size": "8",
+              "note": "Trail shoe, barely under budget, less general use"
+            },
+            {
+              "product_id": "p_06",
+              "price": 64.99,
+              "size": "8",
+              "note": "Entry-level, lower quality"
+            },
+            {
+              "product_id": "p_18",
+              "price": 89.99,
+              "size": "8",
+              "note": "Women's version; not specified"
+            }
+          ],
+          "chosen_product_id": "p_03",
+          "chosen_size": "8",
+          "decision_summary": "Aero Glide 4 in size 8 at $109.99 is a cushioned neutral running shoe, under your $120 limit."
+        }
+      }
+    ]
+  },
+  "checkout": {
+    "receipt_id": "rcpt_627e333bfb7045c1",
+    "order_id": "3DS712773U002684V",
+    "status": "COMPLETED",
+    "amount": "109.99",
+    "currency": "USD",
+    "capture_id": "9V56960783661725H"
+  },
+  "paypal_times": {
+    "order_created": "2026-10-30T18:49:21Z",
+    "captured": "2026-10-30T18:49:22Z"
+  },
+  "_note": "Output of `scripts.shop` from the real vaulted run on 2026-10-30. The in-memory intent log lost it when the process exited; kept so the pre-staged dispute PP-R-LQT-10195344 can be replayed into the ledger (Days 4-5). created_at is approximate: the PayPal order create_time (GET /v2/checkout/orders), which the intent preceded by a few seconds. paypal_times are PayPal's own timestamps."
+}

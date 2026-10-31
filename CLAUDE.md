@@ -74,7 +74,7 @@ PayPal dispute webhook
 
 \- \*\*PayPal:\*\* REST APIs (Orders v2, Disputes v1, Webhooks) via our own thin client; PayPal MCP server (`mcp.sandbox.paypal.com`) / Agent Toolkit where it fits
 
-\- \*\*DB:\*\* PostgreSQL + `pgvector` (SQLite acceptable for local dev until Day 4)
+\- \*\*DB:\*\* SQLite for now. \*\*Decide Postgres vs SQLite-on-disk on Day 11\*\* (Render). pgvector is not required: rule retrieval is keyword (BM25) search (decision Oct 31).
 
 \- \*\*Frontend:\*\* Next.js + React, \*\*AG Grid\*\* for the merchant dispute queue
 
@@ -216,9 +216,9 @@ Expose these as a "break the agent" control in the UI.
 
 \- In sandbox evidence tests, use evidence type `OTHER` where PayPal's test docs require it.
 
-\- Order approval normally needs the buyer to approve before capture. Treat this as a feature (human confirmation step). Investigate on Day 2 whether the demo uses the JS SDK popup or a vaulted/pre-approved flow.
+\- Order approval normally needs the buyer to approve before capture. \*\*Resolved (Oct 30): the hosted demo uses PayPal Vault\*\* (see Vault findings below); the redirect flow remains the fallback when `PAYPAL\_VAULT\_ID` is blank.
 
-\- Webhooks need a public URL: use a tunnel (e.g. ngrok/cloudflared) locally, Render URL in prod. Set up on Day 6.
+\- Webhooks need a public URL. \*\*Decision (Oct 31): no tunnel; register the webhook on Day 11 against the Render URL\*\* (subscribe to CUSTOMER.DISPUTE.\*, set `PAYPAL\_WEBHOOK\_ID` on Render).
 
 \- Dev environment: Windows, PowerShell, Python 3.11.9.
 
@@ -232,6 +232,18 @@ Expose these as a "break the agent" control in the UI.
 \- \*\*Demo implication:\*\* the path is buyer UI dispute → escalate → wait ~10 s → provide-evidence → wait up to ~25 min for the `adjudicate` link → adjudicate → ~2 min to RESOLVED. That's too slow to run live in a 3-min video. Pre-stage disputes in this state before recording, and have the backend poll for the `adjudicate` link (by `rel`) before calling.
 \- Not tested: sandbox `require-evidence` (rel `require\_evidence`, body `action` = `BUYER\_EVIDENCE` / `SELLER\_EVIDENCE`). It was skipped because the dispute was already adjudicable.
 
+\### Vault findings (Oct 30, 45-min time-box; done in about 10 min of work)
+\- Vault works in our sandbox app. The buyer approves once; later orders need no redirect.
+\- \*\*Save without purchase (used for the demo):\*\* `POST /v3/vault/setup-tokens` (`payment\_source.paypal` with `usage\_type: MERCHANT`, `customer\_type: CONSUMER`, `experience\_context` return/cancel URLs) → buyer approves the `rel: approve` link (an `/agreements/approve` page, no charge) → setup token status `APPROVED` → `POST /v3/vault/payment-tokens` with `{"payment\_source": {"token": {"id": <setup token>, "type": "SETUP\_TOKEN"}}}` → 201, `id` is the vault id. Script: `python -m scripts.vault setup` / `finish <setup token>`.
+\- \*\*Save during purchase (also works):\*\* Orders v2 create with `payment\_source.paypal.attributes.vault = {store\_in\_vault: ON\_SUCCESS, usage\_type: MERCHANT, customer\_type: CONSUMER}` → buyer approves → capture response has `payment\_source.paypal.attributes.vault.id` (status `VAULTED`). Not wired into the app.
+\- \*\*Reuse:\*\* `POST /v2/checkout/orders` with `payment\_source: {paypal: {vault\_id}}` returns \*\*201 `COMPLETED` with the capture already in `purchase\_units[0].payments.captures`\*\*. No approval and no separate capture call. Worked for both vault ids (orders 92972337SW9742113, 0CL17926RH337022V).
+\- Approval only counts once the flow finishes with the redirect to the return URL. The first attempt stopped early: order and setup token stayed `PAYER\_ACTION\_REQUIRED` with no payer, and capture / token exchange returned 422 (`ORDER\_NOT\_APPROVED` / `PAYER\_ACTION\_REQUIRED`). The retry worked. Check status before blaming the API.
+\- \*\*Demo vault id:\*\* `2a1428396v984502s` (sandbox buyer <sandbox buyer email>, payer <sandbox buyer payer ID>). Set as `PAYPAL\_VAULT\_ID` locally and on Render.
+\- \*\*Resolved (Oct 30): vaulted purchases can be disputed.\*\* The buyer opened PP-R-LQT-10195344 in the sandbox UI on vaulted order 3DS712773U002684V via "I got a different item" → "Size". In the buyer's PayPal account, a vaulted payment shows as an \*\*"automatic payment" with Test Store\*\* (the sandbox merchant's name), not a normal checkout. Worth a line in the demo voice-over.
+\- PayPal's buyer dispute menu has a \*\*"Size"\*\* option under "I got a different item". It arrives in the API as reason `MERCHANDISE\_OR\_SERVICE\_NOT\_AS\_DESCRIBED`; the size detail is only in the buyer's free-text message.
+\- \*\*Our `custom\_id` reaches the dispute:\*\* `disputed\_transactions[0].custom` = the receipt\_id, and `seller\_transaction\_id` = the capture id. The webhook handler can find the receipt straight from the dispute, with no order lookup.
+\- A new dispute starts as status `OPEN`, stage `INQUIRY`, with only a `self` link (Day 1's started `UNDER\_REVIEW`/`INQUIRY`). Use links by `rel`, not status, to decide what to call next.
+
 
 
 \## Conventions
@@ -239,6 +251,8 @@ Expose these as a "break the agent" control in the UI.
 \- Never commit secrets. Keep `.env.example` current.
 
 \- Small working steps; commit after each one with a clear message.
+\- Push the branch to GitHub right after every commit.
+\- \*\*Merging `day-2-3` into `main`:\*\* squash-merge (one commit on `main`), then delete `day-2-3` on GitHub (`git push origin --delete day-2-3`) and locally. Do not rewrite history. Reason: commit f56ec0d on `day-2-3` contains the sandbox buyer email and payer ID, and the squash keeps it out of `main`'s history. \*\*Done Oct 31\*\* (checked first that neither value is in the final tree).
 
 \- Every PayPal call goes through `paypal/client.py` and is logged (request id, status) for debugging.
 
@@ -251,27 +265,100 @@ Expose these as a "break the agent" control in the UI.
 
 
 \## Current status (update each session)
-\- \*\*Branch:\*\* `day-1` (not yet merged to `main`). Tests: 12 passing (`.venv/Scripts/python -m pytest -q`).
-\- \*\*Done:\*\* Day 1 complete, including the full risk check (order create/capture ✓, buyer-UI dispute → escalate → evidence → adjudicate ✓). Product catalog done.
-\- \*\*Next step:\*\* shopping agent (`backend/agents/shopping.py`), an Anthropic tool-use loop over `search\_products` / `get\_product`, then wire it to PayPal Orders. \*\*Blocked on\*\* the user adding `ANTHROPIC\_API\_KEY` and `ANTHROPIC\_MODEL` to `.env` (suggested: `claude-sonnet-5-5`).
+\- \*\*Branch:\*\* `day-11` (`day-2-3` squash-merged into `main` and deleted, Oct 31). Tests: 121 passing (`.venv/Scripts/python -m pytest -q`).
+\- \*\*Done:\*\* Day 1 risk check. Days 2–3: shopping agent (`backend/agents/shopping.py`), intent log (`backend/intents.py`, in-memory ledger stand-in), checkout (`backend/checkout.py`), routes `POST /shop`, `GET /paypal/return` (captures), `GET /paypal/cancel`, `GET /receipts/{id}`. CLI: `python -m scripts.shop "<request>"`. Vault: `backend/paypal/vault.py`, `orders.create\_vaulted\_order`, checkout uses it when `PAYPAL\_VAULT\_ID` is set.
+\- \*\*Real run (Oct 30), passed end to end:\*\* "running shoes, size 8, under $120" → agent chose p\_03 at $109.99 → receipt rcpt\_218dfea26c7046c5 → order 4HW04778352491241 → sandbox buyer approved → `/paypal/return` captured → COMPLETED, capture 31F56295M9287835W, linked to the receipt as an event. Prompt cache read on turn 2 (1434 tokens).
+\- \*\*Real vaulted run (Oct 30), passed:\*\* same request with `PAYPAL\_VAULT\_ID=2a1428396v984502s` → receipt rcpt\_627e333bfb7045c1 → one PayPal call → order 3DS712773U002684V `COMPLETED`, capture 9V56960783661725H. No redirect.
+\- \*\*Gotcha: refusals.\*\* With `claude-sonnet-5-5`, a tool input field named `reasoning` triggered `stop\_reason: refusal` (category `reasoning\_extraction`) in 3/3 runs; renamed to `decision\_summary` / `note` → 3/3 OK. The server-side refusal fallback did not rescue it (it has since been removed). Avoid a field called "reasoning" in agent tool schemas (the adjudicator too); map to receipt names in code.
+\- \*\*Other notes:\*\* `anthropic` SDK bumped to 0.125.0 (0.42 can't parse thinking blocks). Something else on this machine listens on port 8000; run the server on 8001 with `APP\_BASE\_URL=http://localhost:8001`.
+\- \*\*Pre-staged dispute (keep open; do NOT escalate or settle before Days 6–7):\*\* PP-R-LQT-10195344, OPEN/INQUIRY, $109.99, on vaulted order 3DS712773U002684V (capture 9V56960783661725H), `custom` = rcpt\_627e333bfb7045c1. Buyer message: ordered size 8 via a shopping assistant, received size 9, wants a refund. The agent chose size 8 correctly, so this is the \*\*`MERCHANT\_ERROR`\*\* case (delivered item differs from what was chosen), not `AGENT\_ERROR`. Its receipt contents are saved in `backend/scenarios/staged/rcpt\_627e333bfb7045c1.json` (the in-memory log lost them); load it into the ledger on Days 4–5 under the same receipt\_id.
+\- \*\*Days 4–5 ledger (done Oct 30):\*\* `backend/ledger/` replaced `backend/intents.py` with the same interface (`ledger.log\_intent`, `append\_event`, `get\_receipt`, `find\_by\_order`) plus `verify\_chain`. One SQLite table of records (intents and events) in a single SHA-256 chain; the hash covers canonical JSON (sorted keys, no spaces) including `prev\_hash`; genesis `prev\_hash` is 64 zeros. Triggers block UPDATE/DELETE. Intents are validated by `ledger/models.py` before hashing (bad input → `InvalidReceipt`, 422 on `/shop`). `checkout.start` refuses to order if `verify\_chain()` fails. Routes: `GET /receipts/{id}` (now with `hash`/`prev\_hash`, events carry `seq`/`hash`), `GET /ledger/verify`. CLI: `python -m scripts.ledger verify | show <id> | load-staged`.
+\- \*\*MCP server:\*\* `python -m backend.ledger.mcp\_server` (stdio) exposes `log\_intent`, `get\_receipt`, `verify\_chain` over the same database. Its `log\_intent` takes `decision\_summary` (stored as `reasoning`; see the refusal gotcha). The FastAPI app calls the ledger in-process, not through MCP.
+\- \*\*Staged receipt loaded:\*\* rcpt\_627e333bfb7045c1 is in the local `agent\_receipts.db` under its original ID, with events `paypal\_order\_created`, `paypal\_captured` (PayPal's own timestamps) and `ledger\_import`. `created\_at` is approximate (the order's create\_time; the real intent time was lost). The API and MCP server load `backend/scenarios/staged/` on startup (idempotent), so a fresh database (e.g. Render) gets it too.
+\- \*\*Gotchas (ledger):\*\* `mcp` is 2.x: `FastMCP` was renamed `MCPServer` (`from mcp.server.mcpserver import MCPServer`); tests drive it in-process with `mcp.Client(server)`. Installing it pulled starlette 1.x, which broke fastapi 0.115, so fastapi is now 0.162.0 and pydantic 2.14.2. `DATABASE\_URL` accepts `sqlite:///` only; relative paths resolve against the repo root. Postgres + pgvector is still to do (Day 6–7 RAG needs pgvector; Render needs Postgres by Day 11). Tests use an in-memory ledger via `tests/conftest.py`.
+\- \*\*PayPal anchor (done Oct 30):\*\* `verify\_chain()` alone can't catch someone who controls the DB, edits an intent and recomputes every later hash (reproduced in `tests/test\_anchor.py`). So checkout sends the intent record's hash as `purchase\_units[0].invoice\_id` on both the vaulted and redirect paths (also stored in the `paypal\_order\_created` event). `ledger.verify\_receipt\_against\_paypal(receipt\_id, paypal, order\_id=None)` recomputes the intent hash from the stored body (never trusting the stored hash column), GETs the order, and requires `custom\_id` == receipt\_id and `invoice\_id` == the recomputed hash. Pass `order\_id` from PayPal (the dispute) where possible, because the ledger's own events could be rewritten too. Route: `GET /receipts/{id}/paypal-anchor`. One intent means one order: PayPal may reject a reused invoice\_id, so a retried checkout needs a new intent (not tested).
+\- \*\*Real anchored run (Oct 30), passed:\*\* vaulted, receipt rcpt\_252c81defa384283 → order 8KD591807P3316013 `COMPLETED`, capture 0VN50118EA8909453. PayPal accepted the 64-hex invoice\_id. GET order and GET capture both return it, and the anchor check gives `ok: true`.
+\- \*\*Staged receipt rcpt\_627e333bfb7045c1 predates anchoring:\*\* its order 3DS712773U002684V has no invoice\_id, so the anchor check returns `ok: false, anchored: false` ("predates anchoring"). The adjudicator must treat that as "not anchored", not as tampering, or the pre-staged dispute PP-R-LQT-10195344 fails. The receipt's `created\_at` is approximate (see above).
+\- \*\*Dispute `invoice\_number`: not confirmed, and skipped (Oct 30 decision).\*\* Neither existing dispute has it, but neither order had an invoice\_id, and PayPal omits unset fields, so this proves nothing. The buyer said they opened a case on anchored order 8KD591807P3316013, but the API showed no dispute on capture 0VN50118EA8909453 (by transaction id or by date); polling stopped on request. \*\*Use the capture-id path:\*\* dispute `disputed\_transactions[0].seller\_transaction\_id` (capture id) → `GET /v2/payments/captures/{id}`, which carries both `invoice\_id` (the anchor) and `custom\_id` (confirmed on capture 0VN50118EA8909453). One call, and the id comes from PayPal, not the ledger. If that case appears later, keep it OPEN as the pre-staged `BUYER\_REMORSE` dispute; do not escalate or settle it.
+\- \*\*PP-R-LQT-10195344 changed state by itself:\*\* by Oct 31 01:51Z it was `WAITING\_FOR\_SELLER\_RESPONSE`, stage still `INQUIRY` (it was OPEN/INQUIRY). Nothing of ours touched it.
+\- \*\*Days 6–7 (built Oct 31; live filing not yet run):\*\*
+&#x20; - `backend/resolve.py`: dispute → receipt (`custom`) → anchor check on the capture (`seller\_transaction\_id`) → verdict → next PayPal step. Each stage is a ledger event on the receipt (`dispute\_opened`, `dispute\_verdict`, `dispute\_response`), so the replay timeline can show it. Safe to re-run: adjudicates once per dispute and files each step once. \*\*Files only with `file=True`\*\*, and refuses for simulated disputes.
+&#x20; - `agents/adjudicator.py`: code finds the facts (integrity verified/unanchored/failed, field diff, listing injection) and limits the classes (violation + injection → MERCHANT\_ERROR/AL-3; violation → AGENT\_ERROR/AL-2; none → MERCHANT\_ERROR/AL-4 or BUYER\_REMORSE/AL-5). Claude picks among them with `output\_config.format` (json\_schema). A class outside the allowed set is overridden (confidence capped at 0.6), or goes to `needs\_review` when two classes remain. Integrity `failed` → `needs\_review` with no LLM call.
+&#x20; - `agents/evidence.py`: next step chosen from the dispute's links by rel (`accept\_claim`; or `escalate` → `provide\_evidence` → `adjudicate` SELLER\_FAVOR). Claude writes the note (≤2000 chars).
+&#x20; - `rag/`: 20 rules in `rag/docs/` (ids AL-, DR-, ER-, RP-), BM25 retrieval in pure Python. pgvector waits on Postgres.
+&#x20; - `scenarios/`: the 4 demo failures as fixed data in `demo\_scenarios.json`, run as simulated disputes (no PayPal).
+&#x20; - Webhook: `POST /paypal/webhook` verifies via `verify-webhook-signature` (needs `PAYPAL\_WEBHOOK\_ID`) and handles disputes in the background. Filing only when `DISPUTE\_AUTO\_FILE=true` (default off).
+&#x20; - Routes: `POST /disputes/{id}/resolve?file=`, `GET /scenarios`, `POST /scenarios/{name}/run`. CLI: `python -m scripts.disputes list | resolve ID [--file] | scenario NAME|all`.
+\- \*\*Real runs (Oct 31, on a scratch DB, not the demo ledger):\*\* all 4 scenarios gave the expected class with the real model (no overrides, confidence 0.95, rules AL-2/AL-2/AL-3/AL-5; prompt cache read 855 tokens from call 2). PP-R-LQT-10195344 adjudicated without filing → `MERCHANT\_ERROR`, AL-4, integrity `unanchored`, next step `accept\_claim`. The dispute was unchanged afterwards. A drafted accept\_claim note was 1091 chars and accurate; it was not sent.
+\- \*\*Not done yet (Days 6–7):\*\* (1) No PayPal response has been filed through this code (accept\_claim and the escalate/evidence path are untested live; Day 1 tested escalate/provide-evidence/adjudicate by hand). (2) Webhook not registered: it needs a public URL (tunnel) and a webhook id in the PayPal dashboard, which is the user's call. (3) The scenarios run simulated; live versions need the sandbox buyer to open disputes in the UI. \*\*Keep PP-R-LQT-10195344 open for the demo; don't run `resolve --file` on it before recording.\*\*
+\- \*\*Decisions (Oct 31):\*\* (1) No tunnel; the webhook is registered on Day 11 against the Render URL. (2) No live filing until the recording-prep sitting below. (3) Keep keyword retrieval. Anthropic has no embeddings API, and a local embedding model (sentence-transformers + torch, about 1 GB) isn't cheap for a 20-rule corpus. Postgres vs SQLite-on-disk is decided on Day 11.
+\- \*\*Days 8–9 frontend (built Oct 30):\*\* Next.js 15 + React 19 + AG Grid 33 in `frontend/` (TypeScript 5; npm pulled TS 7 by default, pinned back). `/api/\*` is rewritten to `BACKEND\_URL` (default `http://localhost:8001`), so no CORS. Pages: `/` (merchant queue in AG Grid, tally, the 4 scenario "break the agent" buttons) and `/receipts/{id}?dispute=` (replay timeline, then buyer | merchant split with the verdict card and a PayPal step panel: "Check PayPal" is read-only; "File …" asks for confirmation, then calls `resolve?file=true`). Timeline logic is in `frontend/src/api/timeline.ts`: red = `steps\[].deviation`, else verdict violations on `submit\_choice`, else (MERCHANT\_ERROR with no violation) the `dispute\_opened` frame; amber = a search filter the agent dropped, or a listing with injection text. Visual direction: forensic flight-recorder report (paper/ink, IBM Plex Sans Condensed + Plex Mono + Newsreader; orange only for the brand mark, red only for the deviation). `devIndicators: false` keeps the Next badge out of recordings. New backend routes: `GET /disputes?live=` (`resolve.queue`: ledger dispute events merged with PayPal's list; ledger-only with `paypal\_error` if PayPal fails) and `GET /catalog` (`injection` = the listing's injected sentences). Don't create a top-level `lib/` folder: the root `.gitignore` ignores `lib/`.
+\- \*\*UI checked (Oct 30, scratch DB, headless Edge screenshots):\*\* all 4 scenarios gave the expected class with the real model (0.93–0.96; AL-2/AL-2/AL-3/AL-5). PP-R-LQT-10195344 adjudicated without filing → MERCHANT\_ERROR AL-4, unanchored, next `accept\_claim`; nothing filed. Screenshot recipe: `msedge --headless=new --window-size=1400,2600 --virtual-time-budget=12000 --screenshot=out.png URL` (the time budget lets the replay animation finish).
+\- \*\*FILING\_ENABLED (Oct 30):\*\* master switch, default `false`. `resolve.resolve(file=True)` raises `FilingDisabled`, so the route (403, checked before any PayPal or Claude call), the webhook (auto-file needs both flags) and the CLI all refuse. Resolve results carry `filing\_enabled`; with it off, the merchant pane shows "Would file: <action>" and no button. Checked live: `resolve?file=true` on PP-R-LQT-10195344 → 403, nothing sent.
+\- \*\*UI review fixes (Oct 30):\*\* (1) Scenario runs go through `scenarios.run()` (route and CLI): log the receipt, then `checkout.start` with the vault, so every run is a \*\*real sandbox order\*\* anchored by invoice\_id; the dispute stays simulated (`SIM-…`, never filed) but carries the real capture id, so integrity is `verified`. Without `PAYPAL\_VAULT\_ID` or credentials, runs fall back to unanchored. Each click is a real sandbox charge plus one Claude call. (2) 5th scenario `tampered\_receipt` (built on `wrong\_size`): after the real order, `backend/ledger/tamper.py` rewrites the intent (mandate size 8→9, deviation notes dropped), rehashes every later record, and rewrites the ledger's own copy of invoice\_id. `verify\_chain` passes; the anchor check on the capture fails → integrity `failed` (`check: "anchor"`, UI: red "altered after purchase") → `needs\_review`, AL-6, no LLM call. Guards: only receipts with `agent\_run.model == "seeded-scenario"`, never a staged receipt (so never PP-R-LQT's), only when the receipt's records are the chain tail (no other receipt's hash can change), in one write transaction; triggers are recreated. (3) Queue columns all flex from minimums that fit 1270px. (4) `resolve.queue` drops disputes with no receipt in the ledger; unseen live disputes are looked up once (GET dispute → `custom`, cached). (5) Each card has a Run ▸ button. Integrity results now carry `check` ("chain"/"anchor"). Tests: 115.
+\- \*\*Real run (Oct 30, scratch DB):\*\* all 5 scenarios live: wrong\_size order 482030303J252990G, over\_budget 3H580825UB576321F, prompt\_injection 04W6666807612005J, buyer\_remorse 5BM57974W96593448 — all `verified`, expected classes (0.96–0.98). tampered\_receipt order 8WT70285BJ1146034 → `needs\_review`, anchor failed, `verify\_chain` ok.
+\- \*\*Receipt page fixes (Oct 30):\*\* (1) Verdict diff rows carry `delivered` / `delivered\_ok`: what the buyer says arrived, parsed in code from their message (`adjudicator.delivered\_report`, size only, needs a delivery verb: "received/shipped/arrived … size 9"; "ordered in size 9" doesn't count). The model is told it's the buyer's report, not a fact. The verdict card shows a "Delivered (buyer reports)" column, red on mismatch. Verdicts stored before this have no `delivered` and show "—" (they're stored once per dispute). (2) The buyer box says "Recommended: refund of $X" until a `dispute\_response` with `accept\_claim` exists for the dispute, then "Refunded $X". (3) Its reason comes from the verdict (`frontend/src/api/explain.ts`): "proves" only when integrity is `verified`, otherwise "shows" (so PP-R-LQT's unanchored receipt "shows"). (4) `ledger\_import` frames are dimmed, collapsed system notes and not counted as frames. (5) Records are labelled "chain #N". Tests: 121.
+\- \*\*Next step: Day 11.\*\* Render deploy (plan first, approved by the user before anything is created on Render), fresh-clone README test, Postman collection. The merchant pane's \"File\" button has not been used against PayPal yet; the first live filing waits for the recording-prep sitting.
+
+\#\# Recording-prep sitting (one sitting, after Day 11 deploy, before Day 12)
+\*\*Trimmed Oct 30: only 2 new buyer disputes.\*\* (1) a throwaway, for the first live `accept\_claim` through this code, off camera; (2) one `BUYER\_REMORSE` dispute for the escalate → evidence → adjudicate shot. The refund shot uses the existing PP-R-LQT-10195344 (`MERCHANT\_ERROR`, AL-4, integrity `unanchored`), with `accept\_claim` filed on camera. `wrong\_size`, `over\_budget` and `prompt\_injection` stay simulated in the video ("break the agent", no PayPal), so no live-order mode is needed for this sitting. The buyer-remorse dispute is opened first because PayPal's `adjudicate` link takes ~25 min. Budget about 45 min.
+
+\*\*Filing switch:\*\* every filing path (route, webhook, CLI `--file`) is refused unless `FILING\_ENABLED=true` (403 on the route; the UI shows "Would file: <action>" and no File button). \*\*Only the user turns it on\*\*, in the local `.env`, for this sitting and for the on-camera filings; Claude never sets it. Render keeps it `false`, so on-camera filing runs from the local app. Set it back to `false` after recording.
+
+\*\*Before the sitting\*\*
+\- \[ ] Render is up and the webhook is registered (Day 11). `DISPUTE\_AUTO\_FILE=false` and `FILING\_ENABLED=false` on Render; every step is driven by hand locally with `python -m scripts.disputes resolve ID [--file]` (or the merchant pane).
+\- \[ ] Database decision made (Day 11). If Render's database can be wiped by a redeploy, both new receipts must also be saved to `backend/scenarios/staged/` (same format as rcpt\_627e333bfb7045c1, with real `paypal\_times`) so they reload under the same id.
+\- \[ ] `PAYPAL\_VAULT\_ID` still works. Sandbox buyer is logged in at sandbox.paypal.com.
+\- \[ ] The user has set `FILING\_ENABLED=true` in the local `.env` and restarted the local backend.
+
+\*\*1. Create 2 orders (Claude, about 3 min).\*\* Both use the real agent and the vault: `python -m scripts.shop "Buy me running shoes, size 8, under $120"`, run twice. Check each receipt's choice meets the mandate (size 8, ≤ $120). Write down order id → receipt\_id → role (throwaway / buyer\_remorse).
+\- \[ ] If the buyer-remorse case on anchored order 8KD591807P3316013 has shown up in the API by then, use it as the buyer-remorse dispute and create only the throwaway order.
+\- \[ ] `python -m scripts.ledger verify` → ok, and `GET /receipts/{id}/paypal-anchor` → `ok: true` for each new receipt.
+
+\*\*2. The user opens both disputes (sandbox buyer UI, about 5 min).\*\* Activity → the "automatic payment" to Test Store → Report a problem. Buyer-remorse first.
+| Order | Menu path | Buyer message |
+|---|---|---|
+| buyer\_remorse | I got a different item (or "Other") | "The shoes arrived fine, but I changed my mind and don't want them anymore. Please refund me." |
+| Throwaway | I got a different item → Size | "I ordered size 8 through a shopping assistant but received size 9. Please refund me." |
+\- \[ ] `python -m scripts.disputes list` shows both (about 1 min each). Note each dispute id next to its order.
+
+\*\*3. Start the 25-minute clock: the buyer-remorse dispute (Claude).\*\*
+\- \[ ] `resolve ID` (no file) → verdict `BUYER\_REMORSE`, rule AL-5, integrity `verified`.
+\- \[ ] `resolve ID --file` → files `escalate`. Wait about 10 s (stage becomes CHARGEBACK, `provide\_evidence` link appears).
+\- \[ ] `resolve ID --file` → files `provide\_evidence`. \*\*Note the time T.\*\* The `adjudicate` link appears around T + 25 min (Day 1: 26 min).
+
+\*\*4. Throwaway: the first live filing through this code (Claude, during the wait).\*\*
+\- \[ ] `resolve ID` → expect `MERCHANT\_ERROR` (AL-4), integrity `verified`, next `accept\_claim`. Read the verdict before filing.
+\- \[ ] `resolve ID --file` → files `accept\_claim`. Check the dispute reaches RESOLVED and the buyer's refund. If it fails, fix it here; PP-R-LQT-10195344 must not be the first `accept\_claim`.
+\- \[ ] The throwaway receipt's replay timeline shows dispute\_opened → dispute\_verdict → dispute\_response, and the merchant pane's "File" flow works end to end.
+
+\*\*5. Refund shot ready: PP-R-LQT-10195344 (Claude).\*\*
+\- \[ ] `resolve PP-R-LQT-10195344` (no file) → `MERCHANT\_ERROR`, AL-4, integrity `unanchored`, next `accept\_claim`. Verdict is stored, so the video shows the same one. Leave it open; `accept\_claim` is filed on camera.
+\- \[ ] Run the 3 refund scenarios and the tamper scenario once on the demo database so the queue shows them (real vaulted orders, simulated disputes; needs `PAYPAL\_VAULT\_ID`).
+
+\*\*6. After T + 25 min: buyer-remorse dispute ready (Claude).\*\*
+\- \[ ] Poll the dispute (`resolve ID`, no file) until `next.action` is `adjudicate`. Do \*\*not\*\* file it: adjudicate is filed on camera, and RESOLVED follows about 2 min later (cut that wait in editing).
+\- \[ ] Final check: `scripts.ledger verify` ok; the merchant queue lists both demo disputes; neither is RESOLVED yet. `FILING\_ENABLED` stays on locally until recording is done.
 \- \*\*Deployment:\*\* do no deployment work until Day 11.
-\- \*\*Sandbox state:\*\* dispute PP-R-AAU-10195248 is RESOLVED (seller). New disputes need the sandbox buyer to approve an order and open the dispute in the UI.
+\- \*\*Sandbox state:\*\* dispute PP-R-AAU-10195248 is RESOLVED (seller). New disputes need the sandbox buyer to open them in the UI. Vault ids 6ta13924m7343474y and 2a1428396v984502s are live; test captures exist on orders 0JM44515JF3317942 ($1), 92972337SW9742113 ($2), 0CL17926RH337022V ($2), 3DS712773U002684V ($109.99), 8KD591807P3316013 ($109.99, anchored).
 
 \## Build plan (update checkboxes as you go)
 
 \- \[x] \*\*Day 1 (Oct 30):\*\* repo scaffold, `.env.example`, PayPal client with token auth, health route. \*\*Risk check:\*\* create sandbox order + capture; create a sandbox dispute and settle it via adjudicate. Report what worked.
 
-\- \[ ] \*\*Days 2–3:\*\* product catalog + shopping agent + PayPal Orders end to end. \*In progress:\* catalog done (`backend/catalog/`, 20 products; p\_04 = over budget, p\_08 = prompt injection).
+\- \[x] \*\*Days 2–3:\*\* product catalog + shopping agent + PayPal Orders end to end. Catalog: `backend/catalog/`, 20 products; p\_04 = over budget, p\_08 = prompt injection. Real run passed (see status).
 
-\- \[ ] \*\*Days 4–5:\*\* ledger (schema, hash chain, MCP server), agent must log before buying
+\- \[x] \*\*Days 4–5:\*\* ledger (schema, hash chain, MCP server), agent must log before buying. SQLite for now; see status.
 
-\- \[ ] \*\*Days 6–7:\*\* webhook -> adjudicator (RAG) -> evidence agent -> Disputes API; all 4 scenarios
+\- \[ ] \*\*Days 6–7:\*\* webhook -> adjudicator (RAG) -> evidence agent -> Disputes API; all 4 scenarios. Built and tested (scenarios simulated); live filing and webhook registration remain, see status.
 
-\- \[ ] \*\*Days 8–9:\*\* frontend: replay timeline, verdict card, AG Grid merchant queue, split screen
+\- \[x] \*\*Days 8–9:\*\* frontend: replay timeline, verdict card, AG Grid merchant queue, split screen. Built Oct 30; see status.
 
-\- \[ ] \*\*Day 10:\*\* "break the agent" controls
+\- \[x] \*\*Day 10:\*\* "break the agent" controls. Done Oct 30: five cards with Run buttons, real vaulted orders per scenario (only the dispute is simulated), the tamper card, and the `FILING\_ENABLED` switch.
 
 \- \[ ] \*\*Day 11:\*\* deploy to Render, fresh-clone README test, Postman collection
+
+\- \[ ] \*\*Recording prep (before Day 12):\*\* the one sitting in the checklist above.
 
 \- \[ ] \*\*Day 12:\*\* demo video
 

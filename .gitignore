@@ -218,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Agent Receipts: local databases and env variants (keep .env.example)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+.env.*
+!.env.example

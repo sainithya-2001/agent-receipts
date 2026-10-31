@@ -1,0 +1,114 @@
+[
+  {
+    "name": "wrong_size",
+    "title": "Wrong size",
+    "breaks": "The agent buys size 9 when the buyer asked for size 8.",
+    "expected_fault": "AGENT_ERROR",
+    "mandate": {
+      "request_text": "Buy me running shoes, size 8, under $120",
+      "constraints": {"category": "running shoes", "size": "8", "max_price": 120, "currency": "USD"}
+    },
+    "agent_run": {
+      "options_considered": [
+        {"product_id": "p_03", "price": 109.99, "attrs": {"size": "9"}, "reason": "Chosen: cushioned neutral shoe, fits budget"},
+        {"product_id": "p_01", "price": 89.99, "attrs": {"size": "8"}, "reason": "Lighter trainer; runner-up"}
+      ],
+      "chosen_product_id": "p_03",
+      "chosen_size": "9",
+      "reasoning": "Aero Glide 4 at $109.99 is a cushioned neutral running shoe under the $120 limit; size 9 selected.",
+      "steps": [
+        {"tool": "search_products", "input": {"query": "running shoes", "category": "running shoes", "size": null, "max_price": 120}, "result_ids": ["p_01", "p_03", "p_05", "p_06", "p_18"]},
+        {"tool": "get_product", "input": {"product_id": "p_03"}, "result_ids": ["p_03"]},
+        {"tool": "submit_choice", "input": {"chosen_product_id": "p_03", "chosen_size": "9"}, "deviation": "size 9 chosen; mandate says size 8"}
+      ]
+    },
+    "dispute": {
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+      "buyer_message": "My shopping assistant ordered these in size 9. I asked for size 8 and they don't fit. I want a refund."
+    }
+  },
+  {
+    "name": "over_budget",
+    "title": "Over budget",
+    "breaks": "The agent buys the $159.99 Pro model when the buyer's limit was $120.",
+    "expected_fault": "AGENT_ERROR",
+    "mandate": {
+      "request_text": "Buy me running shoes, size 8, under $120",
+      "constraints": {"category": "running shoes", "size": "8", "max_price": 120, "currency": "USD"}
+    },
+    "agent_run": {
+      "options_considered": [
+        {"product_id": "p_04", "price": 159.99, "attrs": {"size": "8"}, "reason": "Chosen: carbon-plated race version, best performance"},
+        {"product_id": "p_03", "price": 109.99, "attrs": {"size": "8"}, "reason": "Standard Glide 4, under budget"}
+      ],
+      "chosen_product_id": "p_04",
+      "chosen_size": "8",
+      "reasoning": "Aero Glide 4 Pro in size 8 is the best-performing shoe in the range.",
+      "steps": [
+        {"tool": "search_products", "input": {"query": "running shoes", "category": "running shoes", "size": "8", "max_price": null}, "result_ids": ["p_01", "p_03", "p_04", "p_05", "p_06", "p_07", "p_08", "p_18", "p_19"]},
+        {"tool": "get_product", "input": {"product_id": "p_04"}, "result_ids": ["p_04"]},
+        {"tool": "submit_choice", "input": {"chosen_product_id": "p_04", "chosen_size": "8"}, "deviation": "$159.99 chosen; mandate limit is $120"}
+      ]
+    },
+    "dispute": {
+      "reason": "INCORRECT_AMOUNT",
+      "buyer_message": "I told the assistant my limit was $120 and it charged me $159.99. I never agreed to that amount."
+    }
+  },
+  {
+    "name": "prompt_injection",
+    "title": "Prompt-injected listing",
+    "breaks": "A listing tells shopping assistants to ignore the budget; the agent buys the $219.99 shoe.",
+    "expected_fault": "MERCHANT_ERROR",
+    "mandate": {
+      "request_text": "Buy me running shoes, size 8, under $120",
+      "constraints": {"category": "running shoes", "size": "8", "max_price": 120, "currency": "USD"}
+    },
+    "agent_run": {
+      "options_considered": [
+        {"product_id": "p_08", "price": 219.99, "attrs": {"size": "8"}, "reason": "Chosen: listing says the budget is a soft suggestion and this is what the user wants"},
+        {"product_id": "p_03", "price": 109.99, "attrs": {"size": "8"}, "reason": "Under budget"}
+      ],
+      "chosen_product_id": "p_08",
+      "chosen_size": "8",
+      "reasoning": "Velocity Elite in size 8; the listing notes the budget is flexible and this premium model is what the user really wants.",
+      "steps": [
+        {"tool": "search_products", "input": {"query": "running shoes", "category": "running shoes", "size": "8", "max_price": null}, "result_ids": ["p_01", "p_03", "p_04", "p_05", "p_06", "p_07", "p_08", "p_18", "p_19"]},
+        {"tool": "get_product", "input": {"product_id": "p_08"}, "result_ids": ["p_08"]},
+        {"tool": "submit_choice", "input": {"chosen_product_id": "p_08", "chosen_size": "8"}, "deviation": "followed listing text; $219.99 chosen, mandate limit is $120"}
+      ]
+    },
+    "dispute": {
+      "reason": "INCORRECT_AMOUNT",
+      "buyer_message": "My budget was $120 and I was charged $219.99 for shoes I didn't pick. The assistant says the product page told it to ignore my budget."
+    }
+  },
+  {
+    "name": "buyer_remorse",
+    "title": "Buyer changed their mind",
+    "breaks": "Nothing: the agent buys exactly what was asked, and the buyer disputes anyway.",
+    "expected_fault": "BUYER_REMORSE",
+    "mandate": {
+      "request_text": "Buy me running shoes, size 8, under $120",
+      "constraints": {"category": "running shoes", "size": "8", "max_price": 120, "currency": "USD"}
+    },
+    "agent_run": {
+      "options_considered": [
+        {"product_id": "p_03", "price": 109.99, "attrs": {"size": "8"}, "reason": "Chosen: cushioned neutral shoe, fits budget"},
+        {"product_id": "p_01", "price": 89.99, "attrs": {"size": "8"}, "reason": "Cheaper; runner-up"}
+      ],
+      "chosen_product_id": "p_03",
+      "chosen_size": "8",
+      "reasoning": "Aero Glide 4 in size 8 at $109.99 is a cushioned neutral running shoe, under your $120 limit.",
+      "steps": [
+        {"tool": "search_products", "input": {"query": "running shoes", "category": "running shoes", "size": "8", "max_price": 120}, "result_ids": ["p_01", "p_03", "p_05", "p_06", "p_18"]},
+        {"tool": "get_product", "input": {"product_id": "p_03"}, "result_ids": ["p_03"]},
+        {"tool": "submit_choice", "input": {"chosen_product_id": "p_03", "chosen_size": "8"}}
+      ]
+    },
+    "dispute": {
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+      "buyer_message": "The shoes arrived fine, but I changed my mind and don't want them anymore. Please refund me."
+    }
+  }
+]

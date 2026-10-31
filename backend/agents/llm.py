@@ -17,6 +17,10 @@ log = logging.getLogger(__name__)
 EPHEMERAL = {"type": "ephemeral"}
 
 
+class RefusalError(RuntimeError):
+    """Claude declined the request (stop_reason "refusal")."""
+
+
 def cached_system(text: str) -> list[dict[str, Any]]:
     return [{"type": "text", "text": text, "cache_control": EPHEMERAL}]
 
@@ -38,11 +42,11 @@ def create_message(
     max_tokens: int = 16000,
     **kwargs: Any,
 ):
-    model = get_settings().anthropic_model
-    if not model:
+    settings = get_settings()
+    if not settings.anthropic_model:
         raise RuntimeError("ANTHROPIC_MODEL is not set")
     params: dict[str, Any] = {
-        "model": model,
+        "model": settings.anthropic_model,
         "max_tokens": max_tokens,
         "system": cached_system(system),
         "messages": messages,
@@ -58,4 +62,6 @@ def create_message(
         getattr(u, "cache_creation_input_tokens", None),
         getattr(u, "cache_read_input_tokens", None), u.output_tokens,
     )
+    if response.stop_reason == "refusal":
+        raise RefusalError(getattr(response, "stop_details", None))
     return response

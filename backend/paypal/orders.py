@@ -10,6 +10,7 @@ def create_order(
     currency: str = "USD",
     description: str | None = None,
     custom_id: str | None = None,
+    invoice_id: str | None = None,
     return_url: str = "https://example.com/return",
     cancel_url: str = "https://example.com/cancel",
 ) -> dict[str, Any]:
@@ -20,6 +21,9 @@ def create_order(
     if custom_id:
         # Links the PayPal order back to our ledger receipt.
         unit["custom_id"] = custom_id
+    if invoice_id:
+        # The intent's hash, held by PayPal, so a rewritten ledger can't match it (see ledger/anchor.py).
+        unit["invoice_id"] = invoice_id
     body = {
         "intent": "CAPTURE",
         "purchase_units": [unit],
@@ -33,6 +37,28 @@ def create_order(
             }
         },
     }
+    return client.request("POST", "/v2/checkout/orders", json=body)
+
+
+def create_vaulted_order(
+    client: PayPalClient,
+    amount: str,
+    vault_id: str,
+    currency: str = "USD",
+    description: str | None = None,
+    custom_id: str | None = None,
+    invoice_id: str | None = None,
+) -> dict[str, Any]:
+    """Charge a saved PayPal wallet. In sandbox this returns COMPLETED, already captured:
+    no buyer redirect and no separate capture call."""
+    unit: dict[str, Any] = {"amount": {"currency_code": currency, "value": amount}}
+    if description:
+        unit["description"] = description
+    if custom_id:
+        unit["custom_id"] = custom_id
+    if invoice_id:
+        unit["invoice_id"] = invoice_id
+    body = {"intent": "CAPTURE", "purchase_units": [unit], "payment_source": {"paypal": {"vault_id": vault_id}}}
     return client.request("POST", "/v2/checkout/orders", json=body)
 
 

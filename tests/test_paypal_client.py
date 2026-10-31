@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from backend.paypal import disputes, orders
+from backend.paypal import disputes, orders, vault
 from backend.paypal.client import PayPalClient, PayPalError
 
 BASE = "https://api-m.test.paypal.com"
@@ -48,13 +48,14 @@ def test_create_order_sends_bearer_and_request_id(client):
             json={"id": "O1", "links": [{"rel": "payer-action", "href": "https://approve"}]},
         )
     )
-    order = orders.create_order(client, "109.99", custom_id="rcpt_1")
+    order = orders.create_order(client, "109.99", custom_id="rcpt_1", invoice_id="a" * 64)
     req = route.calls.last.request
     assert req.headers["Authorization"] == "Bearer tok"
     assert req.headers["PayPal-Request-Id"]
     body = json.loads(req.content)
     assert body["purchase_units"][0]["amount"] == {"currency_code": "USD", "value": "109.99"}
     assert body["purchase_units"][0]["custom_id"] == "rcpt_1"
+    assert body["purchase_units"][0]["invoice_id"] == "a" * 64
     assert orders.approve_link(order) == "https://approve"
 
 
@@ -96,3 +97,33 @@ def test_missing_credentials_raise(monkeypatch):
     monkeypatch.delenv("PAYPAL_CLIENT_SECRET", raising=False)
     with pytest.raises(ValueError):
         PayPalClient(base_url=BASE)
+
+
+@respx.mock
+def test_vaulted_order_sends_vault_id_only(client):
+    mock_token(respx)
+    route = respx.post(f"{BASE}/v2/checkout/orders").mock(
+        return_value=httpx.Response(201, json={"id": "O2", "status": "COMPLETED"})
+    )
+    orders.create_vaulted_order(client, "109.99", "VAULT1", custom_id="rcpt_1", invoice_id="b" * 64)
+    body = json.loads(route.calls.last.request.content)
+    assert body["payment_source"] == {"paypal": {"vault_id": "VAULT1"}}
+    assert body["purchase_units"][0]["custom_id"] == "rcpt_1"
+    assert body["purchase_units"][0]["invoice_id"] == "b" * 64
+
+
+@respx.mock
+def test_setup_token_then_payment_token(client):
+    mock_token(respx)
+    respx.post(f"{BASE}/v3/vault/setup-tokens").mock(return_value=httpx.Response(
+        201, json={"id": "ST1", "status": "PAYER_ACTION_REQUIRED",
+                   "links": [{"rel": "approve", "href": "https://approve/ST1"}]}))
+    pt_route = respx.post(f"{BASE}/v3/vault/payment-tokens").mock(
+        return_value=httpx.Response(201, json={"id": "VAULT1"}))
+
+    token = vault.create_setup_token(client)
+    assert vault.approve_link(token) == "https://approve/ST1"
+    assert vault.create_payment_token(client, "ST1")["id"] == "VAULT1"
+    assert json.loads(pt_route.calls.last.request.content) == {
+        "payment_source": {"token": {"id": "ST1", "type": "SETUP_TOKEN"}}
+    }
