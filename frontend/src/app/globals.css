@@ -128,6 +128,8 @@ button { font: inherit; color: inherit; }
 .tag.solid.agent, .tag.solid.failed { background: var(--red); color: #fff; border-color: var(--red); }
 .cell-clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 
+.note-box.demo-limit { border-color: var(--amber); background: var(--amber-wash); color: var(--ink); font-size: 14px; }
+.note-box.demo-limit a { color: var(--ink); font-weight: 600; }
 .error-box {
   border: 1px solid var(--red); background: var(--red-wash); color: var(--red);
   padding: 10px 14px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap;

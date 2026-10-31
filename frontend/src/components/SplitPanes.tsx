@@ -6,6 +6,7 @@ import { buyerReason } from "@/api/explain";
 import { humanize, money, reasonLabel, when } from "@/api/format";
 import type { LedgerEvent, NextStep, Product, Receipt, Verdict } from "@/api/types";
 import { VerdictCard } from "./VerdictCard";
+import { DemoLimitNotice, demoLimitOf, type DemoLimitDetail } from "./DemoLimit";
 
 interface Props {
   receipt: Receipt;
@@ -113,6 +114,7 @@ function PayPalStep({ disputeId, simulated, onChanged }: { disputeId: string; si
   const [filed, setFiled] = useState<{ action: string; note: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [limit, setLimit] = useState<DemoLimitDetail | null>(null);
 
   if (simulated) {
     return (
@@ -128,6 +130,7 @@ function PayPalStep({ disputeId, simulated, onChanged }: { disputeId: string; si
         !window.confirm(`File "${next.action}" on ${disputeId} with PayPal? This changes the dispute and can't be undone.`)) return;
     setBusy(true);
     setError(null);
+    setLimit(null);
     try {
       const res = await api.resolve(disputeId, file);
       setNext(res.next ?? null);
@@ -138,7 +141,9 @@ function PayPalStep({ disputeId, simulated, onChanged }: { disputeId: string; si
         window.dispatchEvent(new Event("ledger-changed"));
       }
     } catch (e) {
-      setError(e instanceof ApiError ? JSON.stringify(e.detail, null, 1) : String(e));
+      const capped = demoLimitOf(e);
+      if (capped) setLimit(capped);
+      else setError(e instanceof ApiError ? JSON.stringify(e.detail, null, 1) : String(e));
     } finally {
       setBusy(false);
     }
@@ -179,6 +184,7 @@ function PayPalStep({ disputeId, simulated, onChanged }: { disputeId: string; si
         </>
       )}
       {error && <div className="error-box" style={{ marginTop: 10 }}>{error}</div>}
+      {limit && <div style={{ marginTop: 10 }}><DemoLimitNotice detail={limit} /></div>}
     </div>
   );
 }

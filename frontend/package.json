@@ -1,6 +1,9 @@
 {
   "name": "agent-receipts-frontend",
   "private": true,
+  "engines": {
+    "node": ">=20.9 <25"
+  },
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",

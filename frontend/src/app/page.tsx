@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/api/client";
 import type { QueueRow, Scenario } from "@/api/types";
 import { DisputeQueue } from "@/components/DisputeQueue";
+import { DemoLimitNotice, demoLimitOf, type DemoLimitDetail } from "@/components/DemoLimit";
 import { FaultTag } from "@/components/FaultTag";
 
 export default function QueuePage() {
@@ -14,6 +15,7 @@ export default function QueuePage() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [running, setRunning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [limit, setLimit] = useState<DemoLimitDetail | null>(null);
 
   const load = useCallback(() => {
     api.queue().then((q) => { setRows(q.items); setPaypalError(q.paypal_error); }, (e) => setError(String(e)));
@@ -26,12 +28,15 @@ export default function QueuePage() {
   const seed = async (name: string) => {
     setRunning(name);
     setError(null);
+    setLimit(null);
     try {
       const res = await api.runScenario(name);
       window.dispatchEvent(new Event("ledger-changed"));
       router.push(`/receipts/${res.receipt_id}?dispute=${encodeURIComponent(res.dispute_id)}`);
     } catch (e) {
-      setError(e instanceof ApiError ? JSON.stringify(e.detail) : String(e));
+      const capped = demoLimitOf(e);
+      if (capped) setLimit(capped);
+      else setError(e instanceof ApiError ? JSON.stringify(e.detail) : String(e));
       setRunning(null);
     }
   };
@@ -85,6 +90,7 @@ export default function QueuePage() {
         ))}
       </div>
       {error && <div className="error-box" style={{ marginTop: 10 }}>{error}</div>}
+      {limit && <div style={{ marginTop: 10 }}><DemoLimitNotice detail={limit} /></div>}
 
       <div className="section-title">
         <h2>Queue</h2>

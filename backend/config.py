@@ -28,6 +28,10 @@ class Settings:
     # Master switch for every PayPal filing (route, webhook, CLI). Off by default; turned on
     # locally only for the recording-prep sitting. DISPUTE_AUTO_FILE does nothing without it.
     filing_enabled: bool
+    # Demo cost guard on the routes that call Claude or place orders (/shop, scenario runs,
+    # dispute resolve): runs per minute per visitor, and runs per UTC day for everyone. 0 = no limit.
+    rate_limit_per_minute: int
+    rate_limit_per_day: int
 
 
 def _flag(name: str) -> bool:
@@ -40,10 +44,14 @@ def get_settings() -> Settings:
         paypal_client_secret=os.environ.get("PAYPAL_CLIENT_SECRET", ""),
         paypal_base_url=os.environ.get("PAYPAL_BASE_URL", SANDBOX_BASE_URL).rstrip("/"),
         anthropic_model=os.environ.get("ANTHROPIC_MODEL") or None,
-        app_base_url=os.environ.get("APP_BASE_URL", "http://localhost:8000").rstrip("/"),
+        # On Render, RENDER_EXTERNAL_URL is the service's public URL; no need to set APP_BASE_URL there.
+        app_base_url=(os.environ.get("APP_BASE_URL") or os.environ.get("RENDER_EXTERNAL_URL")
+                      or "http://localhost:8000").rstrip("/"),
         paypal_vault_id=os.environ.get("PAYPAL_VAULT_ID") or None,
         database_url=os.environ.get("DATABASE_URL") or "sqlite:///./agent_receipts.db",
         paypal_webhook_id=os.environ.get("PAYPAL_WEBHOOK_ID") or None,
         dispute_auto_file=_flag("DISPUTE_AUTO_FILE"),
         filing_enabled=_flag("FILING_ENABLED"),
+        rate_limit_per_minute=int(os.environ.get("RATE_LIMIT_PER_MINUTE") or 3),
+        rate_limit_per_day=int(os.environ.get("RATE_LIMIT_PER_DAY") or 150),
     )

@@ -1,6 +1,7 @@
 import pytest
 
 from backend import ledger
+from backend.ratelimit import limiter
 
 
 @pytest.fixture(autouse=True)
@@ -9,3 +10,11 @@ def memory_ledger():
     ledger.configure("sqlite:///:memory:")
     yield
     ledger.configure(None)
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limit():
+    """Each test starts with no runs counted."""
+    limiter.reset()
+    yield
+    limiter.reset()

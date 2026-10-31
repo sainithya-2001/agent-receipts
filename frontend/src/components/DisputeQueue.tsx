@@ -8,6 +8,7 @@ import { api, ApiError } from "@/api/client";
 import { humanize, money, reasonLabel, whenShort } from "@/api/format";
 import type { QueueRow } from "@/api/types";
 import { FaultTag, IntegrityTag } from "./FaultTag";
+import { DemoLimitNotice, demoLimitOf, type DemoLimitDetail } from "./DemoLimit";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -40,17 +41,21 @@ export function DisputeQueue({ rows, onChanged }: { rows: QueueRow[]; onChanged:
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [limit, setLimit] = useState<DemoLimitDetail | null>(null);
 
   const adjudicate = async (row: QueueRow) => {
     setBusy(row.dispute_id);
     setError(null);
+    setLimit(null);
     try {
       const res = await api.resolve(row.dispute_id, false); // adjudicate only; PayPal is not changed
       if (res.status === "no_receipt") setError(`${row.dispute_id}: ${res.why}`);
       onChanged();
       window.dispatchEvent(new Event("ledger-changed"));
     } catch (e) {
-      setError(e instanceof ApiError ? `${row.dispute_id}: ${JSON.stringify(e.detail)}` : String(e));
+      const capped = demoLimitOf(e);
+      if (capped) setLimit(capped);
+      else setError(e instanceof ApiError ? `${row.dispute_id}: ${JSON.stringify(e.detail)}` : String(e));
     } finally {
       setBusy(null);
     }
@@ -113,6 +118,7 @@ export function DisputeQueue({ rows, onChanged }: { rows: QueueRow[]; onChanged:
   return (
     <>
       {error && <div className="error-box" style={{ marginBottom: 10 }}>{error}</div>}
+      {limit && <div style={{ marginBottom: 10 }}><DemoLimitNotice detail={limit} /></div>}
       <div className="grid-wrap" style={{ height: Math.min(560, 40 + 46 * Math.max(rows.length, 4) + 2) }}>
         <AgGridReact<QueueRow>
           theme={theme}

@@ -2,7 +2,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, Body, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 from backend import checkout, ledger, resolve, scenarios, shop
@@ -15,6 +15,7 @@ from backend.config import get_settings
 from backend.ledger import LedgerError
 from backend.paypal import webhooks
 from backend.paypal.client import PayPalClient, PayPalError
+from backend.ratelimit import demo_limit
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
@@ -55,7 +56,7 @@ def _paypal_error(exc: PayPalError) -> HTTPException:
     return HTTPException(502, {"paypal_status": exc.status, "debug_id": exc.debug_id, "body": exc.body})
 
 
-@app.post("/shop")
+@app.post("/shop", dependencies=[Depends(demo_limit)])
 def shop_route(req: ShopRequest) -> dict:
     """Run the shopping agent, log its intent, and create the PayPal order to approve."""
     try:
@@ -153,7 +154,7 @@ def catalog() -> list[dict]:
     return [{**p, "injection": listing_injection(p["description"])} for p in load_products()]
 
 
-@app.post("/disputes/{dispute_id}/resolve")
+@app.post("/disputes/{dispute_id}/resolve", dependencies=[Depends(demo_limit)])
 def dispute_resolve(dispute_id: str, file: bool = False) -> dict:
     """Adjudicate a real dispute. file=true also takes the next PayPal step (needs FILING_ENABLED)."""
     try:
@@ -173,7 +174,7 @@ def scenario_list() -> list[dict]:
     return scenarios.list_scenarios()
 
 
-@app.post("/scenarios/{name}/run")
+@app.post("/scenarios/{name}/run", dependencies=[Depends(demo_limit)])
 def scenario_run(name: str) -> dict:
     """Seed a demo failure: log its receipt, buy it for real (vaulted, anchored) when the vault
     is set, simulate the dispute and adjudicate it. The dispute is never filed."""

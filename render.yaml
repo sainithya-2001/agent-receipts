@@ -1,0 +1,72 @@
+# Render Blueprint: the FastAPI backend (with the ledger on a persistent disk) and the Next.js
+# frontend. Create it from the Render dashboard: New > Blueprint > this repo.
+# Values marked sync: false are secrets; Render asks for them when the Blueprint is created.
+services:
+  - type: web
+    name: agent-receipts-api
+    runtime: python
+    plan: starter            # a disk needs a paid instance; also avoids free-tier spin-down
+    region: oregon           # same region as the frontend, for the private network
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    # One worker: the ledger is SQLite on the disk, and the demo rate limit is in memory.
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: ledger
+      mountPath: /var/data   # survives deploys and restarts; staged receipts reload if it's ever empty
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        value: sqlite:////var/data/agent_receipts.db
+      - key: PAYPAL_BASE_URL
+        value: https://api-m.sandbox.paypal.com
+      # Never file with PayPal from the hosted demo; filing happens only locally (recording-prep sitting).
+      - key: FILING_ENABLED
+        value: "false"
+      - key: DISPUTE_AUTO_FILE
+        value: "false"
+      # Demo cost guard on /shop, scenario runs and dispute resolve.
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "3"
+      - key: RATE_LIMIT_PER_DAY
+        value: "150"
+      # APP_BASE_URL is not set: the backend falls back to RENDER_EXTERNAL_URL, its public URL.
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_VAULT_ID
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        sync: false
+      # Set after registering the webhook in the PayPal developer dashboard. Until then the
+      # webhook route answers 503.
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+
+  - type: web
+    name: agent-receipts-web
+    runtime: node
+    plan: starter            # no spin-down, so judges don't wait a minute on first load
+    region: oregon
+    branch: main
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      # The API's private-network host:port; next.config.ts adds http://.
+      - key: BACKEND_URL
+        fromService:
+          type: web
+          name: agent-receipts-api
+          property: hostport
