@@ -1,0 +1,199 @@
+{
+  "info": {
+    "name": "Agent Receipts",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8001"
+    },
+    {
+      "key": "scenario_name",
+      "value": "wrong_size"
+    },
+    {
+      "key": "receipt_id",
+      "value": "rcpt_627e333bfb7045c1"
+    },
+    {
+      "key": "dispute_id",
+      "value": "PP-R-LQT-10195344"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": ""
+      }
+    },
+    {
+      "name": "Catalog",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/catalog",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "catalog"
+          ]
+        },
+        "description": ""
+      }
+    },
+    {
+      "name": "List scenarios",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/scenarios",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "scenarios"
+          ]
+        },
+        "description": ""
+      }
+    },
+    {
+      "name": "Run scenario",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/scenarios/{{scenario_name}}/run",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "scenarios",
+            "{{scenario_name}}",
+            "run"
+          ]
+        },
+        "description": "Places a real sandbox order and calls Claude. Rate limited."
+      }
+    },
+    {
+      "name": "Get receipt",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/receipts/{{receipt_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "receipts",
+            "{{receipt_id}}"
+          ]
+        },
+        "description": ""
+      }
+    },
+    {
+      "name": "PayPal anchor check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/receipts/{{receipt_id}}/paypal-anchor",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "receipts",
+            "{{receipt_id}}",
+            "paypal-anchor"
+          ]
+        },
+        "description": ""
+      }
+    },
+    {
+      "name": "Verify ledger",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/ledger/verify",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "ledger",
+            "verify"
+          ]
+        },
+        "description": ""
+      }
+    },
+    {
+      "name": "List disputes",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/disputes?live=false",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "disputes"
+          ],
+          "query": [
+            {
+              "key": "live",
+              "value": "false"
+            }
+          ]
+        },
+        "description": ""
+      }
+    },
+    {
+      "name": "Resolve dispute (no filing)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/disputes/{{dispute_id}}/resolve?file=false",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "disputes",
+            "{{dispute_id}}",
+            "resolve"
+          ],
+          "query": [
+            {
+              "key": "file",
+              "value": "false"
+            }
+          ]
+        },
+        "description": "Read-only check; file=false never sends anything to PayPal."
+      }
+    }
+  ]
+}

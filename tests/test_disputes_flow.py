@@ -245,7 +245,7 @@ def test_queue_merges_ledger_verdicts_with_paypal_list():
         api.list_disputes.return_value = {"items": [
             {"dispute_id": "PP-D-1", "status": "WAITING_FOR_SELLER_RESPONSE", "dispute_life_cycle_stage": "INQUIRY"},
             {"dispute_id": "PP-D-NEW", "status": "OPEN", "dispute_life_cycle_stage": "INQUIRY",
-             "create_time": "2026-11-01T00:00:00Z", "dispute_amount": {"currency_code": "USD", "value": "5.00"}},
+             "create_time": "2099-01-01T00:00:00Z", "dispute_amount": {"currency_code": "USD", "value": "5.00"}},
             {"dispute_id": "PP-D-OLD", "status": "RESOLVED", "create_time": "2026-10-01T00:00:00Z"},
             {"dispute_id": "PP-D-ELSEWHERE", "status": "OPEN", "create_time": "2026-10-02T00:00:00Z"},
         ]}
