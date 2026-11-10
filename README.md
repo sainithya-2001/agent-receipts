@@ -88,7 +88,7 @@ flowchart LR
     A --> U[Replay timeline + verdict card]
 ```
 
-**Stack:** Python 3.11, FastAPI, SQLite (append-only, on a persistent disk), Anthropic SDK, MCP Python SDK, Next.js + React, AG Grid, Render.
+**Stack:** Python 3.11, FastAPI, SQLite (append-only), Anthropic SDK, MCP Python SDK, Next.js + React, AG Grid, Render.
 
 ---
 
@@ -161,10 +161,12 @@ PayPal only lets the buyer open a dispute. Log in to `sandbox.paypal.com` as the
 
 | Service | What | Plan |
 |---|---|---|
-| `agent-receipts-api` | FastAPI backend; the ledger is SQLite on a 1 GB persistent disk at `/var/data` | Starter (a disk needs a paid instance) |
-| `agent-receipts-web` | Next.js frontend; `/api/*` is forwarded to the API over Render's private network | Starter (no spin-down) |
+| `agent-receipts-api` | FastAPI backend; the ledger is SQLite on the instance's ephemeral filesystem | Free |
+| `agent-receipts-web` | Next.js frontend; `/api/*` is forwarded to the API's public URL | Free |
 
-Render dashboard → **New → Blueprint** → this repo, then fill in the secrets it asks for. Leave `PAYPAL_WEBHOOK_ID` empty until the webhook is registered: developer.paypal.com → your app → **Webhooks** → add `https://<api-service>.onrender.com/paypal/webhook` with the Customer Dispute events, then set its ID on the API service.
+Render dashboard → **New → Blueprint** → this repo, then fill in the secrets it asks for. After the first deploy, set `BACKEND_URL` on the web service to the API's public URL (`https://<api-service>.onrender.com`) and redeploy it: free web services can't receive private-network traffic, and the `/api/*` rewrite is fixed at build time. Leave `PAYPAL_WEBHOOK_ID` empty until the webhook is registered: developer.paypal.com → your app → **Webhooks** → add `https://<api-service>.onrender.com/paypal/webhook` with the Customer Dispute events, then set its ID on the API service.
+
+**Free plan caveats:** services spin down after about 15 minutes idle, so the first request takes about a minute; and the ledger is not persistent, so receipts created on the hosted demo reset on every restart, spin-down or redeploy. The staged receipts in `backend/scenarios/staged/` reload at startup, so the pre-staged dispute is always there.
 
 The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_FILE=false`), and `/shop`, scenario runs and dispute resolve are rate-limited (`RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_PER_DAY`).
 

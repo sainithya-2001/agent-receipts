@@ -1,4 +1,4 @@
-"""render.yaml must keep the hosted demo safe: no filing, ledger on the disk, no secret values."""
+"""render.yaml must keep the hosted demo safe: no filing, free plan, ephemeral SQLite, no secret values."""
 from pathlib import Path
 
 import yaml
@@ -18,9 +18,9 @@ def test_hosted_backend_never_files_with_paypal():
     assert env(API)["DISPUTE_AUTO_FILE"]["value"] == "false"
 
 
-def test_ledger_database_lives_on_the_disk():
-    url = env(API)["DATABASE_URL"]["value"]
-    assert url.startswith("sqlite:////") and url[len("sqlite:///"):].startswith(API["disk"]["mountPath"] + "/")
+def test_ledger_is_ephemeral_sqlite_with_no_disk():
+    assert env(API)["DATABASE_URL"]["value"] == "sqlite:///./agent_receipts.db"
+    assert "disk" not in API
 
 
 def test_secrets_are_never_in_the_file():
@@ -29,6 +29,12 @@ def test_secrets_are_never_in_the_file():
 
 
 def test_frontend_points_at_the_api_and_shares_its_region():
-    assert env(WEB)["BACKEND_URL"]["fromService"]["name"] == API["name"]
-    assert WEB["region"] == API["region"] and WEB["rootDir"] == "frontend"
-    assert API["plan"] == WEB["plan"] == "starter"
+    # Free web services can't receive private-network traffic, so the URL is set by hand.
+    assert env(WEB)["BACKEND_URL"] == {"key": "BACKEND_URL", "sync": False}
+    assert WEB["rootDir"] == "frontend"
+    assert API["plan"] == WEB["plan"] == "free"
+
+
+def test_rate_limit_is_kept():
+    assert int(env(API)["RATE_LIMIT_PER_MINUTE"]["value"]) > 0
+    assert int(env(API)["RATE_LIMIT_PER_DAY"]["value"]) > 0

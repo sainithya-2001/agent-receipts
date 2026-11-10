@@ -1,26 +1,24 @@
-# Render Blueprint: the FastAPI backend (with the ledger on a persistent disk) and the Next.js
+# Render Blueprint (free plan, no card): the FastAPI backend (ledger in SQLite on the ephemeral
+# filesystem) and the Next.js
 # frontend. Create it from the Render dashboard: New > Blueprint > this repo.
 # Values marked sync: false are secrets; Render asks for them when the Blueprint is created.
 services:
   - type: web
     name: agent-receipts-api
     runtime: python
-    plan: starter            # a disk needs a paid instance; also avoids free-tier spin-down
-    region: oregon           # same region as the frontend, for the private network
+    plan: free               # spins down after ~15 min idle (~1 min cold start); no disk
+    region: oregon
     branch: main
     buildCommand: pip install -r requirements.txt
-    # One worker: the ledger is SQLite on the disk, and the demo rate limit is in memory.
+    # One worker: the ledger is SQLite and the demo rate limit is in memory.
     startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
-    disk:
-      name: ledger
-      mountPath: /var/data   # survives deploys and restarts; staged receipts reload if it's ever empty
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: DATABASE_URL
-        value: sqlite:////var/data/agent_receipts.db
+        # Ephemeral: resets on every restart, spin-down and redeploy. Staged receipts reload at startup.
+        value: sqlite:///./agent_receipts.db
       - key: PAYPAL_BASE_URL
         value: https://api-m.sandbox.paypal.com
       # Never file with PayPal from the hosted demo; filing happens only locally (recording-prep sitting).
@@ -52,7 +50,7 @@ services:
   - type: web
     name: agent-receipts-web
     runtime: node
-    plan: starter            # no spin-down, so judges don't wait a minute on first load
+    plan: free               # spins down when idle; first load takes ~1 min
     region: oregon
     branch: main
     rootDir: frontend
@@ -64,9 +62,8 @@ services:
         value: "24"
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
-      # The API's private-network host:port; next.config.ts adds http://.
+      # Free web services can't receive private-network traffic, so use the API's public URL,
+      # e.g. https://agent-receipts-api.onrender.com (set after the first deploy, then redeploy:
+      # rewrites are fixed at build time).
       - key: BACKEND_URL
-        fromService:
-          type: web
-          name: agent-receipts-api
-          property: hostport
+        sync: false
