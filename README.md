@@ -34,8 +34,9 @@ Next.js app in `frontend/`. The browser calls `/api/*`, which Next forwards to t
   side by side, with the verdict card and the next PayPal step.
 
 ```
-# terminal 1: backend
-.venv/Scripts/python -m uvicorn backend.app.main:app --port 8001
+# terminal 1: backend (from the repo root, with .env filled in from .env.example)
+pip install -r requirements.txt
+python -m uvicorn backend.app.main:app --port 8001
 
 # terminal 2: frontend (Node 20+)
 cd frontend
