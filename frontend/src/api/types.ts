@@ -78,7 +78,7 @@ export interface Verdict {
   buyer_claim: string | null;
   diff: DiffRow[];
   violations: string[];
-  integrity: { status: IntegrityStatus; check: "chain" | "anchor" | null; note: string };
+  integrity: { status: IntegrityStatus; check: "chain" | "anchor" | "anchor_unavailable" | null; note: string };
   agent_flagged: boolean;
   injection?: {
     instruction: string; seen_by_agent: boolean; instructed_fields: string[];
@@ -125,7 +125,7 @@ export interface QueueRow {
     violations: string[];
     cited_rule: string | null;
     integrity: IntegrityStatus | null;
-    integrity_check: "chain" | "anchor" | null;
+    integrity_check: "chain" | "anchor" | "anchor_unavailable" | null;
   } | null;
 }
 

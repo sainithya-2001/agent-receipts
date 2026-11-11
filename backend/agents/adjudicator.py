@@ -135,10 +135,16 @@ def buyer_messages(dispute: dict[str, Any]) -> list[str]:
 def integrity_status(chain: dict[str, Any], anchor: dict[str, Any] | None) -> dict[str, Any]:
     """verified / unanchored / failed. Only "failed" stops adjudication (rule AL-6).
 
-    check says which check decided it: "chain" (the ledger itself) or "anchor" (PayPal's copy)."""
+    check says which check decided it: "chain" (the ledger itself), "anchor" (PayPal's copy), or
+    "anchor_unavailable" (a real dispute whose PayPal copy couldn't be fetched: fail closed).
+    anchor may be {"unavailable": reason} for that case; None means there is nothing to check
+    (a simulated dispute with no real order)."""
     if not chain["ok"]:
         return {"status": "failed", "check": "chain",
                 "note": f"Ledger chain broken at record {chain['bad_seq']}: {chain['error']}"}
+    if anchor is not None and anchor.get("unavailable"):
+        return {"status": "failed", "check": "anchor_unavailable",
+                "note": f"Couldn't check the receipt against PayPal: {anchor['unavailable']}"}
     if anchor is None:
         return {"status": "unanchored", "check": None, "note": "No PayPal capture to check the receipt hash against."}
     if anchor["ok"]:

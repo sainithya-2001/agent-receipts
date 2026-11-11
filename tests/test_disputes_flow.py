@@ -15,6 +15,7 @@ from backend.paypal.client import PayPalClient
 from backend.rag import ingest, retrieve
 
 BASE = "https://api-m.sandbox.paypal.com"
+REAL_ANCHOR = resolve._anchor
 
 
 @pytest.fixture(autouse=True)
@@ -24,6 +25,8 @@ def env(monkeypatch):
     monkeypatch.setenv("PAYPAL_CLIENT_ID", "id")
     monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "secret")
     monkeypatch.setenv("PAYPAL_BASE_URL", BASE)
+    # These tests are about the flow, not the anchor check (see test_fail_closed.py for that).
+    monkeypatch.setattr(resolve, "_anchor", lambda *args, **kwargs: None)
 
 
 def fake_claude(fault="BUYER_REMORSE", rule="AL-5", note="Receipt rcpt shows the purchase matched."):
@@ -158,7 +161,8 @@ def test_without_file_flag_paypal_is_never_called():
     assert not api.method_calls
 
 
-def test_real_dispute_runs_the_anchor_check_on_its_capture():
+def test_real_dispute_runs_the_anchor_check_on_its_capture(monkeypatch):
+    monkeypatch.setattr(resolve, "_anchor", REAL_ANCHOR)
     rid = scenarios.log_receipt(scenarios.get_scenario("buyer_remorse"))
     anchor = {"ok": True, "anchored": True, "custom_id_ok": True, "invoice_id": "a" * 64, "error": None}
     with patch("backend.resolve.ledger.verify_receipt_against_paypal", return_value=anchor) as check:

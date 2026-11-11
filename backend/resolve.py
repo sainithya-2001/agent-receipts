@@ -40,6 +40,25 @@ def _events(receipt: dict[str, Any], kind: str, dispute_id: str) -> list[dict[st
     return [e for e in receipt["events"] if e["kind"] == kind and e.get("dispute_id") == dispute_id]
 
 
+def _anchor(receipt_id: str, txn: dict[str, Any], paypal: PayPalClient | None, *,
+            simulated: bool) -> dict[str, Any] | None:
+    """The PayPal anchor check for a dispute. Fails closed for real disputes: with no capture id,
+    no client, or a failed lookup, the result says so ({"unavailable": reason}) rather than
+    passing as unanchored. Only an order that exists but has no invoice_id is unanchored."""
+    capture_id = txn.get("seller_transaction_id")
+    if simulated and (paypal is None or not capture_id):
+        return None  # seeded scenario without a real order: nothing to check
+    if not capture_id:
+        return {"unavailable": "the dispute names no capture id (seller_transaction_id)"}
+    if paypal is None:
+        return {"unavailable": "no PayPal client configured"}
+    try:
+        return ledger.verify_receipt_against_paypal(receipt_id, paypal, capture_id=capture_id)
+    except Exception as exc:  # PayPalError, network errors, malformed responses
+        log.warning("anchor check for %s failed: %s", receipt_id, exc)
+        return {"unavailable": f"capture lookup failed ({exc})"}
+
+
 def resolve(dispute: dict[str, Any], *, paypal: PayPalClient | None = None, file: bool = False,
             client: anthropic.Anthropic | None = None) -> dict[str, Any]:
     """Adjudicate a dispute (once) and, with file=True, take the next PayPal step.
@@ -65,12 +84,12 @@ def resolve(dispute: dict[str, Any], *, paypal: PayPalClient | None = None, file
         })
 
     recorded = _events(receipt, "dispute_verdict", dispute_id)
-    if recorded:
-        verdict = recorded[0]["verdict"]
+    # A verdict is decided once, except one that only failed because PayPal couldn't be reached:
+    # that is re-checked on the next run instead of being stuck in manual review.
+    if recorded and recorded[-1]["verdict"].get("integrity", {}).get("check") != "anchor_unavailable":
+        verdict = recorded[-1]["verdict"]
     else:
-        capture_id = txn.get("seller_transaction_id")
-        anchor = (ledger.verify_receipt_against_paypal(receipt_id, paypal, capture_id=capture_id)
-                  if paypal is not None and capture_id else None)
+        anchor = _anchor(receipt_id, txn, paypal, simulated=bool(dispute.get("simulated")))
         facts = adjudicator.find_facts(receipt, dispute, chain=ledger.verify_chain(), anchor=anchor)
         verdict = adjudicator.adjudicate(facts, dispute, client=client)
         ledger.append_event(receipt_id, "dispute_verdict", {"dispute_id": dispute_id, "verdict": verdict})

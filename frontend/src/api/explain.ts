@@ -20,6 +20,9 @@ function brokeIt(row: DiffRow) {
 
 export function buyerReason(v: Verdict): string {
   if (v.status !== "decided") {
+    if (v.integrity.check === "anchor_unavailable") {
+      return `Your receipt couldn't be checked against PayPal (${v.integrity.note.replace(/\.$/, "")}), so a person reviews the dispute before anything is refunded.`;
+    }
     return `Your receipt can't be relied on (${v.integrity.note.replace(/\.$/, "")}), so a person reviews the dispute before anything is refunded.`;
   }
   // Only a receipt anchored at PayPal "proves"; an unanchored one only "shows".

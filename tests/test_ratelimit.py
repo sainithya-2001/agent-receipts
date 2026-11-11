@@ -20,6 +20,8 @@ def env(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_PER_DAY", "5")
     monkeypatch.delenv("PAYPAL_CLIENT_ID", raising=False)  # scenario runs stay offline
     monkeypatch.delenv("PAYPAL_VAULT_ID", raising=False)
+    # These tests are about the flow, not the anchor check (see test_fail_closed.py for that).
+    monkeypatch.setattr(resolve, "_anchor", lambda *args, **kwargs: None)
 
 
 class Clock:

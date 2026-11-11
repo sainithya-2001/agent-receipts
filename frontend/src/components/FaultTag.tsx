@@ -27,6 +27,7 @@ export function IntegrityTag({ status, check, compact = false }: {
   if (!status) return <span className="tag none">—</span>;
   let label = INTEGRITY_LABEL[status];
   if (status === "failed" && check === "chain") label = "chain broken";
+  else if (status === "failed" && check === "anchor_unavailable") label = compact ? "unchecked" : "PayPal check unavailable";
   else if (compact && status === "failed") label = "altered";
   else if (compact && status === "verified") label = "verified";
   return <span className={`tag ${status}${status === "failed" ? " solid" : ""}`}>{label}</span>;
