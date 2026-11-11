@@ -99,7 +99,8 @@ def _resolve(dispute: dict[str, Any], *, paypal: PayPalClient | None = None, fil
         ledger.append_event(receipt_id, "dispute_opened", {
             "dispute_id": dispute_id, "reason": dispute.get("reason"), "status": dispute.get("status"),
             "stage": dispute.get("dispute_life_cycle_stage"), "amount": dispute.get("dispute_amount"),
-            "buyer_messages": adjudicator.buyer_messages(dispute), "simulated": bool(dispute.get("simulated")),
+            "buyer_messages": adjudicator.buyer_messages(dispute),
+            "item_notes": adjudicator.item_notes(dispute), "simulated": bool(dispute.get("simulated")),
         })
 
     recorded = _events(receipt, "dispute_verdict", dispute_id)
@@ -127,6 +128,31 @@ def _resolve(dispute: dict[str, Any], *, paypal: PayPalClient | None = None, fil
     ledger.append_event(receipt_id, "dispute_response", {"dispute_id": dispute_id, "action": action, "note": note})
     log.info("dispute %s: filed %s", dispute_id, action)
     return {**result, "status": "filed", "filed": {"action": action, "note": note}}
+
+
+def rejudge(dispute: dict[str, Any], reason: str, *, paypal: PayPalClient | None = None,
+            client: anthropic.Anthropic | None = None) -> dict[str, Any]:
+    """Judge a dispute again and append the new verdict as a dispute_verdict event with
+    supersedes=<seq of the verdict it replaces> and the reason. The old verdict stays in the ledger;
+    everything after this reads the latest. Never files anything."""
+    if not reason.strip():
+        raise ResolveError("A re-judgement needs a reason")
+    with _dispute_lock(dispute["dispute_id"]):
+        dispute_id = dispute["dispute_id"]
+        txn = (dispute.get("disputed_transactions") or [{}])[0]
+        receipt = ledger.get_receipt(txn["custom"]) if txn.get("custom") else None
+        recorded = _events(receipt, "dispute_verdict", dispute_id) if receipt else []
+        if not recorded:
+            raise ResolveError("There is no verdict to supersede; resolve the dispute first")
+        old = recorded[-1]
+        anchor = _anchor(receipt["receipt_id"], txn, paypal, simulated=bool(dispute.get("simulated")))
+        facts = adjudicator.find_facts(receipt, dispute, chain=ledger.verify_chain(), anchor=anchor)
+        verdict = adjudicator.adjudicate(facts, dispute, client=client)
+        verdict["rejudged"] = {"supersedes": old["seq"], "reason": reason}
+        ledger.append_event(receipt["receipt_id"], "dispute_verdict", {
+            "dispute_id": dispute_id, "verdict": verdict, "supersedes": old["seq"], "reason": reason})
+        log.info("dispute %s: re-judged, supersedes verdict at chain #%s", dispute_id, old["seq"])
+        return _resolve(dispute, paypal=paypal, file=False, client=client)
 
 
 def resolve_by_id(paypal: PayPalClient, dispute_id: str, *, file: bool = False,

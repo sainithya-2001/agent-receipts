@@ -2,6 +2,7 @@
 
     python -m scripts.disputes list
     python -m scripts.disputes resolve DISPUTE_ID          # adjudicate only; PayPal is not changed
+    python -m scripts.disputes rejudge DISPUTE_ID "reason"   # new verdict supersedes the stored one, never files
     python -m scripts.disputes resolve DISPUTE_ID --file   # also take the next PayPal step
     python -m scripts.disputes scenario NAME               # seeded demo failure; real vaulted order, simulated dispute
     python -m scripts.disputes scenario all
@@ -38,6 +39,10 @@ def main(argv: list[str]) -> int:
         if argv[0] == "list":
             for d in disputes.list_disputes(PayPalClient()).get("items", []):
                 print(d["dispute_id"], d.get("status"), d.get("dispute_life_cycle_stage"), d.get("reason"))
+        elif argv[0] == "rejudge" and len(argv) >= 3:
+            paypal = PayPalClient()
+            result = resolve.rejudge(disputes.get_dispute(paypal, argv[1]), " ".join(argv[2:]), paypal=paypal)
+            print(json.dumps(_card(result), indent=2))
         elif argv[0] == "resolve" and len(argv) >= 2:
             result = resolve.resolve_by_id(PayPalClient(), argv[1], file="--file" in argv[2:])
             print(json.dumps(_card(result), indent=2))

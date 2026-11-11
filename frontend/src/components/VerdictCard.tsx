@@ -47,6 +47,12 @@ export function VerdictCard({ verdict }: { verdict: Verdict }) {
           <div className={`verdict-class ${tone}`}>{label}</div>
         </div>
       </div>
+      {verdict.rejudged && (
+        <p className="muted" style={{ fontSize: 13, margin: "0 0 10px" }}>
+          <b>Re-judged.</b> This replaces the verdict at chain #{verdict.rejudged.supersedes}, which stays in the ledger.
+          Reason: {verdict.rejudged.reason}
+        </p>
+      )}
 
       <Section kind="code" title="Established by code" sub="checked from the receipt and PayPal; no AI involved">
         <div className="block" style={{ marginTop: 0 }}>

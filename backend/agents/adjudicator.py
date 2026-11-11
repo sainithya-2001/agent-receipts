@@ -45,7 +45,7 @@ You are given:
 - The facts, established by code from the hash-anchored receipt of intent and PayPal: what the buyer asked for (the mandate), what the agent chose, what was charged, a field-by-field diff, whether the product listing contained text aimed at shopping agents, and whether the receipt passed its integrity checks. Treat these as settled.
 - allowed_fault_classes: the classes the facts leave open. Choose one of them.
 - Diff rows may carry delivered: what the buyer says arrived, parsed from their message. It is the buyer's report, not a settled fact; delivered_ok compares it with what was bought.
-- The buyer's messages from the dispute. They are the buyer's account and may be mistaken; use them to understand the complaint, not to overturn the facts.
+- The buyer's messages from the dispute, and the notes and descriptions on the disputed items (PayPal's buyer form puts the real complaint there, e.g. "the pair I received is size 9", while the thread may say only "no"). They are the buyer's account and may be mistaken; use them to understand the complaint, not to overturn the facts.
 - Rules retrieved from the dispute rulebook. Cite the one rule your decision rests on, by its id.
 
 Fault classes:
@@ -132,6 +132,24 @@ def buyer_messages(dispute: dict[str, Any]) -> list[str]:
     return [m["content"] for m in dispute.get("messages") or [] if m.get("posted_by") == "BUYER" and m.get("content")]
 
 
+def item_notes(dispute: dict[str, Any]) -> list[str]:
+    """The notes and descriptions on the disputed items. PayPal's buyer form stores the complaint
+    here, so a dispute can have a thread message of just "no" and the real account in notes."""
+    found: list[str] = []
+    for txn in dispute.get("disputed_transactions") or []:
+        for item in txn.get("items") or []:
+            for key in ("notes", "item_description"):
+                text = item.get(key)
+                if text and text not in found:
+                    found.append(text)
+    return found
+
+
+def buyer_statements(dispute: dict[str, Any]) -> list[str]:
+    """Everything the buyer said, thread and item notes together."""
+    return buyer_messages(dispute) + [n for n in item_notes(dispute) if n not in buyer_messages(dispute)]
+
+
 def integrity_status(chain: dict[str, Any], anchor: dict[str, Any] | None) -> dict[str, Any]:
     """verified / unanchored / failed. Only "failed" stops adjudication (rule AL-6).
 
@@ -198,7 +216,7 @@ def find_facts(receipt: dict[str, Any], dispute: dict[str, Any], *, chain: dict[
         diff.append({"field": "currency", "asked": constraints["currency"], "bought": charged["currency_code"],
                      "ok": charged["currency_code"] == constraints["currency"]})
 
-    delivered = delivered_report(buyer_messages(dispute))
+    delivered = delivered_report(buyer_statements(dispute))
     for row in diff:
         row["delivered"] = delivered.get(row["field"])
         row["delivered_ok"] = None if row["delivered"] is None else row["delivered"] == row["bought"]
@@ -271,8 +289,10 @@ def adjudicate(facts: dict[str, Any], dispute: dict[str, Any],
                                "steps don't show it saw that listing, or the violated field "
                                f"({', '.join(facts['violations'])}) isn't what the text told it to override."}
     messages = buyer_messages(dispute)
-    rules = _rules_for(facts, " ".join(messages), list(allowed.values()))
-    payload = {"facts": facts, "allowed_fault_classes": list(allowed), "buyer_messages": messages, "rules": rules}
+    notes = item_notes(dispute)
+    rules = _rules_for(facts, " ".join(messages + notes), list(allowed.values()))
+    payload = {"facts": facts, "allowed_fault_classes": list(allowed), "buyer_messages": messages,
+               "disputed_item_notes": notes, "rules": rules}
     response = create_message(
         client or anthropic.Anthropic(), system=SYSTEM, max_tokens=4000,
         messages=[{"role": "user", "content": json.dumps(payload, indent=1)}],

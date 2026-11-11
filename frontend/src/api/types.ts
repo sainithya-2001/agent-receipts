@@ -126,6 +126,8 @@ export interface Verdict {
   listing_source?: "receipt_snapshot" | "catalog_fallback" | "unavailable" | "none";
   override: { model_said: string; reason: string } | null;
   model: string | null;
+  /** Set when this verdict was appended to replace an earlier one (which stays in the ledger). */
+  rejudged?: { supersedes: number; reason: string };
 }
 
 export interface NextStep {

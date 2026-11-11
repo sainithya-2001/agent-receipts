@@ -35,7 +35,8 @@ export const verdictEvents = (receipt: Receipt) =>
 /** The verdict for one dispute, or the receipt's latest one. */
 export function pickVerdict(receipt: Receipt, disputeId?: string | null): Verdict | null {
   const all = verdictEvents(receipt);
-  return (disputeId ? all.find((v) => v.dispute_id === disputeId) : all[all.length - 1]) ?? null;
+  // The latest verdict wins: a re-judgement is appended and supersedes the earlier one.
+  return (disputeId ? [...all].reverse().find((v) => v.dispute_id === disputeId) : all[all.length - 1]) ?? null;
 }
 
 function violationText(verdict: Verdict) {
@@ -130,6 +131,10 @@ export function buildTimeline(receipt: Receipt, catalog: Product[], disputeId?: 
       const v = event.verdict as Verdict;
       frame.body = { type: "event", event, verdict: v };
       frame.tone = v.status !== "decided" ? "warning" : v.fault_class === "BUYER_REMORSE" ? "good" : "plain";
+      if (receipt.events.some((x) => x.kind === "dispute_verdict" && x.supersedes === event.seq)) {
+        frame.tone = "system"; // replaced by a later verdict; kept for the record
+        frame.title = "Adjudicator verdict (superseded)";
+      }
     }
     if (event.kind === "dispute_response") frame.tone = "good";
     if (event.kind === "ledger_import") frame.tone = "system";

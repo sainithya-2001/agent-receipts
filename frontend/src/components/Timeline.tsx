@@ -248,6 +248,11 @@ function EventBody({ event, verdict }: { event: LedgerEvent; verdict?: Verdict }
             {verdict.agent_flagged && <span className="tag agent">agent flagged</span>}
           </div>
           <div className="serif" style={{ fontSize: 15, marginTop: 6 }}>{verdict.outcome}</div>
+          {verdict.rejudged && (
+            <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+              Re-judged: replaces chain #{verdict.rejudged.supersedes}. {verdict.rejudged.reason}
+            </div>
+          )}
           {tail}
         </>
       ) : tail;

@@ -190,14 +190,14 @@ The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_F
 - **Filing is opt-in.** Nothing is sent to PayPal unless `FILING_ENABLED=true`. The hosted demo keeps it off.
 - **Keep it small.** Keyword (BM25) retrieval over 20 rules instead of an embedding model, SQLite instead of a database server, and plain Anthropic tool-use loops instead of an agent framework.
 
-## Limitations
+## Current scope and next steps
 
-- **What a receipt is, and isn't.** It records what the agent logged before paying and, when anchored, shows it was not edited afterwards. It is not a signature by the buyer and does not verify who typed the request or that the buyer authorized this agent.
-- **Sandbox only.** All payments use PayPal's sandbox.
-- **Dispute creation.** PayPal does not let a merchant app open disputes, so live disputes are opened by the sandbox buyer in PayPal's UI. The break-the-agent scenarios simulate the dispute (but place real orders) so judges can test instantly.
-- **Settlement timing.** In the sandbox, a dispute can take about 25 minutes after evidence before PayPal allows it to be settled.
-- **Rule set.** The dispute rules are written for this demo and are not PayPal policy.
-- **Single store.** The demo uses one sandbox merchant and a 20-product catalog.
+- **Sandbox only.** All payments use PayPal's sandbox. *Next:* live credentials with a merchant partner.
+- **Disputes are opened by the buyer.** PayPal doesn't let a merchant app open disputes, so live disputes start in PayPal's buyer interface. The "Break the agent" cards use scripted agent decisions with real sandbox orders, so each failure is reproducible.
+- **Tamper-evident, not signed.** A receipt shows the record hasn't changed since purchase, checked against PayPal's stored copy. The server records the buyer's confirmation step, but a receipt isn't a buyer signature and doesn't verify who typed the request. *Next:* accept signed authorizations such as AP2 mandates or Mastercard Verifiable Intent.
+- **Injection attribution is evidence-based**, not a formal proof: what the agent saw and what the injected text told it to override. Unclear cases go to manual review.
+- **Demo rules and catalog.** The 20 dispute rules are written for this demo, not PayPal policy; one sandbox merchant, 20 products.
+- **Free hosting.** The first load can take about a minute, and demo data resets when the server restarts.
 
 ## License
 
