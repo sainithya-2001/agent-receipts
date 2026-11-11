@@ -34,3 +34,12 @@ def test_agent_error_outcome_claims_no_transfer_of_liability():
         body = (ROOT / rel).read_text(encoding="utf-8")
         assert not re.search(r"liability (passes|transfers|shifts)|provider is liable|liability to agent provider",
                              body, re.I), rel
+
+
+def test_buyer_box_and_readme_do_not_overclaim():
+    explain = (ROOT / "frontend/src/api/explain.ts").read_text(encoding="utf-8")
+    assert not re.search(r"\bprov(es|e|en)\b", explain, re.I)
+    assert "Your verified receipt" in explain and "shows" in explain
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert not re.search(r"\bprov(es|e|en)\b", readme, re.I)
+    assert "not a signature by the buyer" in readme

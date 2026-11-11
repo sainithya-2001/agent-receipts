@@ -1,6 +1,6 @@
 # Proof of Intent
 
-**The dispute layer for AI purchases on PayPal.** When an AI agent buys the wrong thing, Proof of Intent proves what it was asked to do, decides who is at fault, and settles the dispute through PayPal.
+**The dispute layer for AI purchases on PayPal.** When an AI agent buys the wrong thing, Proof of Intent records what it was asked to do before the purchase, uses that record to decide who is at fault, and settles the dispute through PayPal.
 
 Built for the PayPal AI Hackathon: *Build what's next with PayPal and AI*.
 
@@ -33,7 +33,7 @@ Payment networks and merchants describe liability for agent purchases as an open
 5. **Evidence agent.** It picks the next step from the actions PayPal currently offers on the dispute (accept claim, escalate, provide evidence) and writes the response.
 6. **Replay.** A timeline shows every step the agent took, with the step where things went wrong highlighted in red.
 
-### Why the AI verdict can be trusted
+### Why the AI doesn't decide alone
 
 The AI does not decide alone. Code first works out the facts: does the receipt verify against PayPal, which fields differ between the mandate and the purchase, and did the listing try to instruct the agent. Those facts limit which verdicts are possible. Claude then chooses among the allowed verdicts, cites a rule, and explains. If it picks a verdict the facts rule out, the facts win and the override is recorded. If the receipt fails its integrity check, the case goes to manual review with no AI call at all.
 
@@ -192,6 +192,7 @@ The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_F
 
 ## Limitations
 
+- **What a receipt is, and isn't.** It records what the agent logged before paying and, when anchored, shows it was not edited afterwards. It is not a signature by the buyer and does not verify who typed the request or that the buyer authorized this agent.
 - **Sandbox only.** All payments use PayPal's sandbox.
 - **Dispute creation.** PayPal does not let a merchant app open disputes, so live disputes are opened by the sandbox buyer in PayPal's UI. The break-the-agent scenarios simulate the dispute (but place real orders) so judges can test instantly.
 - **Settlement timing.** In the sandbox, a dispute can take about 25 minutes after evidence before PayPal allows it to be settled.

@@ -25,29 +25,29 @@ export function buyerReason(v: Verdict): string {
     }
     return `Your receipt can't be relied on (${v.integrity.note.replace(/\.$/, "")}), so a person reviews the dispute before anything is refunded.`;
   }
-  // Only a receipt anchored at PayPal "proves"; an unanchored one only "shows".
-  const verb = v.integrity.status === "verified" ? "proves" : "shows";
+  // The receipt only ever "shows": a receipt that matches PayPal's copy is called verified, an unanchored one is not.
+  const subject = v.integrity.status === "verified" ? "Your verified receipt" : "Your receipt";
   const broken = v.diff.find((d) => !d.ok);
   const misdelivered = v.diff.find((d) => d.delivered_ok === false);
   switch (v.fault_class) {
     case "AGENT_ERROR":
       return broken
-        ? `Your receipt ${verb} ${brokeIt(broken)}. That broke your instructions, so you are refunded and the agent provider is identified as responsible for the breach.`
+        ? `${subject} shows ${brokeIt(broken)}. That broke your instructions, so you are refunded and the agent provider is identified as responsible for the breach.`
         : "Your agent broke your instructions, so you are refunded and the agent provider is identified as responsible for the breach.";
     case "MERCHANT_ERROR":
       if (v.agent_flagged && broken) {
         const asked = broken.field === "price" ? `set a limit of ${limit(broken.asked)}` : `asked for ${value(broken, broken.asked)}`;
-        return `Your receipt ${verb} you ${asked}. The product listing told your agent to ignore that, and it bought ${value(broken, broken.bought)}, so the merchant is at fault.`;
+        return `${subject} shows you ${asked}. The product listing told your agent to ignore that, and it bought ${value(broken, broken.bought)}, so the merchant is at fault.`;
       }
       if (misdelivered) {
-        return `Your receipt ${verb} your agent ordered ${value(misdelivered, misdelivered.bought)}; the merchant shipped ${value(misdelivered, misdelivered.delivered ?? null)}, so the merchant is at fault.`;
+        return `${subject} shows your agent ordered ${value(misdelivered, misdelivered.bought)}; the merchant shipped ${value(misdelivered, misdelivered.delivered ?? null)}, so the merchant is at fault.`;
       }
-      return `Your receipt ${verb} your agent's order matched your request; you report receiving something different, so the merchant is at fault.`;
+      return `${subject} shows your agent's order matched your request; you report receiving something different, so the merchant is at fault.`;
     case "BUYER_REMORSE": {
       const size = v.diff.find((d) => d.field === "size");
       const price = v.diff.find((d) => d.field === "price");
       const parts = [size && value(size, size.bought), price && `${money(price.bought)} within your ${limit(price.asked)} limit`].filter(Boolean);
-      return `Your receipt ${verb} your agent bought exactly what you asked for${parts.length ? ` (${parts.join(", ")})` : ""}. The merchant's normal return policy still applies.`;
+      return `${subject} shows your agent bought exactly what you asked for${parts.length ? ` (${parts.join(", ")})` : ""}. The merchant's normal return policy still applies.`;
     }
     default:
       return v.outcome;
