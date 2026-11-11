@@ -19,6 +19,22 @@
     {
       "key": "dispute_id",
       "value": "PP-R-LQT-10195344"
+    },
+    {
+      "key": "request_text",
+      "value": "Buy me running shoes, size 8, under $120"
+    },
+    {
+      "key": "mandate_id",
+      "value": ""
+    },
+    {
+      "key": "job_id",
+      "value": ""
+    },
+    {
+      "key": "capture_id",
+      "value": ""
     }
   ],
   "item": [
@@ -55,6 +71,220 @@
         },
         "description": ""
       }
+    },
+    {
+      "name": "1. Parse request into a mandate",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/mandate/parse",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "mandate",
+            "parse"
+          ]
+        },
+        "description": "Claude reads the request into constraints and the server stores them under a mandate_id. Nothing is bought. Separate, looser rate limit.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"request_text\": \"{{request_text}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const d = pm.response.json();",
+              "pm.collectionVariables.set(\"mandate_id\", d.mandate_id);",
+              "pm.test(\"unconfirmed mandate\", () => pm.expect(d.confirmed_by_buyer_at).to.eql(null));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Confirm the mandate",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/mandate/{{mandate_id}}/confirm",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "mandate",
+            "{{mandate_id}}",
+            "confirm"
+          ]
+        },
+        "description": "The buyer's confirmation: the server stamps its own time and locks the constraints. Confirming again returns the same record."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const d = pm.response.json();",
+              "pm.test(\"has a server timestamp\", () => pm.expect(d.confirmed_by_buyer_at).to.be.a(\"string\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Shop (confirmed mandate only)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/shop",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "shop"
+          ]
+        },
+        "description": "Accepts only a confirmed, unused mandate_id: free text or constraints are 422, an unconfirmed mandate 422, an unknown id 404, a reused one 409. Places a real sandbox order and calls Claude. Rate limited.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mandate_id\": \"{{mandate_id}}\",\n  \"background\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set(\"job_id\", pm.response.json().job_id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Poll the run",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/shop/jobs/{{job_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "shop",
+            "jobs",
+            "{{job_id}}"
+          ]
+        },
+        "description": "Repeat until status is done; the test script then sets receipt_id and capture_id for the next requests."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const d = pm.response.json();",
+              "if (d.status === \"done\") {",
+              "  pm.collectionVariables.set(\"receipt_id\", d.result.receipt_id);",
+              "  pm.collectionVariables.set(\"capture_id\", (d.result.checkout && d.result.checkout.capture_id) || \"\");",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Anchor check (with capture id)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/receipts/{{receipt_id}}/paypal-anchor?capture_id={{capture_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "receipts",
+            "{{receipt_id}}",
+            "paypal-anchor?capture_id={{capture_id}}"
+          ]
+        },
+        "description": "Recomputes the receipt hash and compares it with the invoice_id PayPal stored on the order. capture_id is set by step 4. ok:true with anchored:true is a MATCH."
+      }
+    },
+    {
+      "name": "PayPal webhook (unsigned: expect 400)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/paypal/webhook",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "paypal",
+            "webhook"
+          ]
+        },
+        "description": "A deliberately unsigned event. 400 means PAYPAL_WEBHOOK_ID is loaded and the signature was rejected; 503 means the id is not set. Nothing is handled.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"WH-UNSIGNED\",\n  \"event_type\": \"CUSTOMER.DISPUTE.CREATED\",\n  \"resource\": {\n    \"dispute_id\": \"PP-R-TEST\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"rejected, id loaded\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "List scenarios",
@@ -148,7 +378,7 @@
       }
     },
     {
-      "name": "List disputes",
+      "name": "List disputes (ledger)",
       "request": {
         "method": "GET",
         "header": [],
@@ -167,7 +397,7 @@
             }
           ]
         },
-        "description": ""
+        "description": "live=false: from the ledger only. Use live=true to merge PayPal's own list."
       }
     },
     {
