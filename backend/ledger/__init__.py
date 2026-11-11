@@ -17,9 +17,9 @@ from backend.ledger.chain import (
     verify_chain,
 )
 from backend.ledger.staged import load_staged
-from backend.ledger.store import clear, configure
+from backend.ledger.store import claim_event, clear, configure, release_event
 
 __all__ = [
-    "GENESIS_HASH", "InvalidReceipt", "LedgerError", "append_event", "clear", "configure", "events_of_kinds", "find_by_order",
+    "GENESIS_HASH", "InvalidReceipt", "LedgerError", "append_event", "claim_event", "clear", "release_event", "configure", "events_of_kinds", "find_by_order",
     "get_receipt", "load_staged", "log_intent", "verify_chain", "verify_receipt_against_paypal",
 ]

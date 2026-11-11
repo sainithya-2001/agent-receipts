@@ -9,6 +9,7 @@ each PayPal step is filed once.
 Filing is off unless asked for (file=True), so looking at a real dispute never changes it.
 """
 import logging
+import threading
 from typing import Any
 
 import anthropic
@@ -59,8 +60,26 @@ def _anchor(receipt_id: str, txn: dict[str, Any], paypal: PayPalClient | None, *
         return {"unavailable": f"capture lookup failed ({exc})"}
 
 
+_locks: dict[str, threading.Lock] = {}
+_locks_guard = threading.Lock()
+
+
+def _dispute_lock(dispute_id: str) -> threading.Lock:
+    with _locks_guard:
+        return _locks.setdefault(dispute_id, threading.Lock())
+
+
 def resolve(dispute: dict[str, Any], *, paypal: PayPalClient | None = None, file: bool = False,
             client: anthropic.Anthropic | None = None) -> dict[str, Any]:
+    """Adjudicate a dispute and (with file=True) take its next PayPal step, one caller at a time per
+    dispute in this process: a webhook and a button press can't both decide or file the same step.
+    See _resolve for the steps. (Across processes, PayPal's deterministic Request-Id does the same job.)"""
+    with _dispute_lock(dispute["dispute_id"]):
+        return _resolve(dispute, paypal=paypal, file=file, client=client)
+
+
+def _resolve(dispute: dict[str, Any], *, paypal: PayPalClient | None = None, file: bool = False,
+             client: anthropic.Anthropic | None = None) -> dict[str, Any]:
     """Adjudicate a dispute (once) and, with file=True, take the next PayPal step.
 
     paypal=None skips the anchor check and can't file: for seeded scenarios."""

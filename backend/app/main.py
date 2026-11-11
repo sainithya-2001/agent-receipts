@@ -110,12 +110,14 @@ def receipt_paypal_anchor(receipt_id: str, order_id: str | None = None) -> dict:
 log = logging.getLogger(__name__)
 
 
-def _handle_dispute(dispute_id: str, file: bool) -> None:
+def _handle_dispute(dispute_id: str, file: bool, event_id: str | None = None) -> None:
     try:
         result = resolve.resolve_by_id(PayPalClient(), dispute_id, file=file)
         log.info("dispute %s: %s, next %s", dispute_id, result["status"], result.get("next"))
     except Exception:
         log.exception("dispute %s: handling failed", dispute_id)
+        if event_id:
+            ledger.release_event(event_id)  # let PayPal's retry of this event be handled
 
 
 @app.post("/paypal/webhook")
@@ -131,8 +133,15 @@ def paypal_webhook(request: Request, background: BackgroundTasks, event: dict = 
     if not verified:
         raise HTTPException(400, "webhook signature not verified")
     dispute_id = webhooks.dispute_id_of(event)
+    event_id = event.get("id")
+    # PayPal redelivers events; handle each event id once. Checked after the signature, so only
+    # genuine events can use up an id.
+    if event_id and not ledger.claim_event(event_id):
+        return {"received": True, "duplicate": True, "event_type": event.get("event_type"),
+                "dispute_id": dispute_id}
     if dispute_id:
-        background.add_task(_handle_dispute, dispute_id, settings.dispute_auto_file and settings.filing_enabled)
+        background.add_task(_handle_dispute, dispute_id, settings.dispute_auto_file and settings.filing_enabled,
+                            event_id)
     return {"received": True, "event_type": event.get("event_type"), "dispute_id": dispute_id}
 
 

@@ -218,7 +218,7 @@ def test_webhook_route_verifies_then_handles_in_background(monkeypatch):
     with patch("backend.app.main._handle_dispute") as handle:
         r = TestClient(app).post("/paypal/webhook", json=EVENT, headers=SIGNED)
     assert r.status_code == 200 and r.json()["dispute_id"] == "PP-D-1"
-    handle.assert_called_once_with("PP-D-1", False)  # DISPUTE_AUTO_FILE defaults off
+    handle.assert_called_once_with("PP-D-1", False, "WH-1")  # DISPUTE_AUTO_FILE defaults off
 
 
 @respx.mock
@@ -313,4 +313,4 @@ def test_webhook_never_files_while_filing_disabled(monkeypatch):
     mock_paypal()
     with patch("backend.app.main._handle_dispute") as handle:
         TestClient(app).post("/paypal/webhook", json=EVENT, headers=SIGNED)
-    handle.assert_called_once_with("PP-D-1", False)
+    handle.assert_called_once_with("PP-D-1", False, "WH-1")

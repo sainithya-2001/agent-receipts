@@ -29,6 +29,12 @@ CREATE TABLE IF NOT EXISTS records (
 CREATE UNIQUE INDEX IF NOT EXISTS one_intent_per_receipt ON records (receipt_id) WHERE kind = 'intent';
 CREATE INDEX IF NOT EXISTS records_by_receipt ON records (receipt_id);
 CREATE INDEX IF NOT EXISTS records_by_order ON records (order_id);
+-- Webhook events already handled, by PayPal's event id. Deliberately outside the hash chain:
+-- it is delivery bookkeeping, not evidence.
+CREATE TABLE IF NOT EXISTS webhook_events (
+    event_id TEXT PRIMARY KEY,
+    received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
 CREATE TRIGGER IF NOT EXISTS records_no_update BEFORE UPDATE ON records
     BEGIN SELECT RAISE(ABORT, 'ledger records are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS records_no_delete BEFORE DELETE ON records
@@ -88,6 +94,18 @@ def write() -> Iterator[sqlite3.Connection]:
         conn.execute("COMMIT")
 
 
+def claim_event(event_id: str) -> bool:
+    """Record a webhook event id. True the first time, False for a repeat delivery."""
+    with write() as conn:
+        return conn.execute("INSERT OR IGNORE INTO webhook_events (event_id) VALUES (?)", (event_id,)).rowcount == 1
+
+
+def release_event(event_id: str) -> None:
+    """Forget an event id whose handling failed, so PayPal's redelivery is processed again."""
+    with write() as conn:
+        conn.execute("DELETE FROM webhook_events WHERE event_id = ?", (event_id,))
+
+
 def read(sql: str, params: tuple = ()) -> list[sqlite3.Row]:
     with _lock:
         return connection().execute(sql, params).fetchall()
@@ -97,5 +115,5 @@ def clear() -> None:
     """For tests: drop everything and start an empty chain."""
     with _lock:
         conn = connection()
-        conn.executescript("DROP TABLE IF EXISTS records;")
+        conn.executescript("DROP TABLE IF EXISTS records; DROP TABLE IF EXISTS webhook_events;")
         conn.executescript(_SCHEMA)
