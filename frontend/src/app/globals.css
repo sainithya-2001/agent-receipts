@@ -413,3 +413,7 @@ table.options .bad { color: var(--red); }
 .progress li.bad .dot { background: var(--red); border-color: var(--red); }
 .progress li .detail { font-size: 13px; }
 @keyframes pulse { 50% { opacity: 0.25; } }
+.anchor-note p { margin: 0; }
+.anchor-note p + p { margin-top: 6px; }
+.anchor.mismatch .anchor-note p.anchor-chain { color: var(--ink); font-weight: 400; font-size: 15px; }
+.hash-line.anchor-mismatch span.bad { font-weight: 600; }

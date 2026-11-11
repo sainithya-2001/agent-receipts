@@ -7,6 +7,7 @@ import { api, ApiError } from "@/api/client";
 import { FAULT_LABEL, shortHash, when } from "@/api/format";
 import { buildTimeline, pickVerdict } from "@/api/timeline";
 import type { LedgerEvent, Product, Receipt } from "@/api/types";
+import { AnchorCtx, useAnchorCheck } from "@/components/AnchorContext";
 import { AnchorPanel } from "@/components/AnchorPanel";
 import { faultTone } from "@/components/FaultTag";
 import { SplitPanes } from "@/components/SplitPanes";
@@ -18,6 +19,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [catalog, setCatalog] = useState<Product[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const anchorCheck = useAnchorCheck(receipt);
 
   const load = useCallback(() => {
     Promise.all([api.receipt(id), api.catalog()]).then(
@@ -62,9 +64,10 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
         <span className="mono muted">{verdict?.cited_rule ? `rule ${verdict.cited_rule.id}` : ""}</span>
       </div>
 
-      <AnchorPanel receipt={receipt} />
-
-      <Timeline key={`${receipt.receipt_id}-${receipt.events.length}`} frames={frames} />
+      <AnchorCtx.Provider value={anchorCheck}>
+        <AnchorPanel receipt={receipt} />
+        <Timeline key={`${receipt.receipt_id}-${receipt.events.length}`} frames={frames} />
+      </AnchorCtx.Provider>
       <SplitPanes receipt={receipt} product={product} opened={opened} verdict={verdict} onChanged={load} />
     </main>
   );

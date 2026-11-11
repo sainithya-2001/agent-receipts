@@ -1,29 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api } from "@/api/client";
+import { useContext } from "react";
 import { ANCHOR_LABEL, anchorState, anchorSummary } from "@/api/anchor";
-import type { PayPalAnchor, Receipt } from "@/api/types";
+import type { Receipt } from "@/api/types";
+import { AnchorCtx } from "./AnchorContext";
 
 /** Our recomputed intent hash against the invoice_id PayPal stored on the order. */
 export function AnchorPanel({ receipt }: { receipt: Receipt }) {
-  const [anchor, setAnchor] = useState<PayPalAnchor | null>(null);
-  const [failed, setFailed] = useState(false);
+  const { anchor, failed, chain } = useContext(AnchorCtx);
   const captureId = (receipt.events.find((e) => e.kind === "paypal_captured")?.capture_id as string | undefined) ?? null;
-
-  useEffect(() => {
-    let live = true;
-    setAnchor(null);
-    setFailed(false);
-    api.anchor(receipt.receipt_id, captureId).then(
-      (a) => live && setAnchor(a),
-      () => live && setFailed(true),
-    );
-    return () => { live = false; };
-  }, [receipt.receipt_id, captureId]);
 
   const state = anchorState(anchor, failed);
   const hashesDiffer = state === "mismatch" && anchor?.intent_hash !== anchor?.invoice_id;
+  const customId = anchor?.custom_id ?? null;
+  const customMatches = customId !== null && customId === receipt.receipt_id; // tick only on an exact match
   return (
     <section className={`anchor ${state}`} aria-label="PayPal anchor">
       <div className="anchor-head">
@@ -31,7 +21,16 @@ export function AnchorPanel({ receipt }: { receipt: Receipt }) {
           <span className="eyebrow">PayPal anchor</span>
           <div className="anchor-state">{ANCHOR_LABEL[state]}</div>
         </div>
-        <p className="anchor-note">{anchorSummary(state, anchor)}</p>
+        <div className="anchor-note">
+          <p>{anchorSummary(state, anchor)}</p>
+          {state === "mismatch" && chain && (
+            <p className="anchor-chain">
+              {chain.ok
+                ? "The ledger's own hash chain still verifies; only PayPal's independent copy exposes the edit."
+                : `The ledger's own hash chain is broken too (at record ${chain.bad_seq}).`}
+            </p>
+          )}
+        </div>
       </div>
       <dl className="anchor-grid">
         <dt>Intent hash <em>recomputed from the stored receipt</em></dt>
@@ -45,8 +44,9 @@ export function AnchorPanel({ receipt }: { receipt: Receipt }) {
         <dt>Capture id</dt>
         <dd className="mono">{anchor?.capture_id ?? captureId ?? "—"}</dd>
         <dt>PayPal custom_id <em>should be this receipt</em></dt>
-        <dd className={`mono${anchor && !anchor.custom_id_ok && anchor.order_id ? " bad" : ""}`}>
-          {anchor?.custom_id ?? "—"}{anchor?.custom_id_ok ? "  ✓" : ""}
+        <dd className={`mono${customId !== null && !customMatches ? " bad" : ""}`}>
+          {customId ?? "—"}{customMatches ? "  ✓" : ""}
+          {customId !== null && !customMatches ? "  ✗ not this receipt" : ""}
         </dd>
       </dl>
     </section>

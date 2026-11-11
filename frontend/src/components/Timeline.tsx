@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { anchorState } from "@/api/anchor";
 import { money, reasonLabel, shortHash, when, humanize } from "@/api/format";
 import type { Frame } from "@/api/timeline";
 import type { Constraints as ConstraintsT, LedgerEvent, Product, Verdict } from "@/api/types";
+import { AnchorCtx } from "./AnchorContext";
 import { FaultTag } from "./FaultTag";
 
 const STEP_MS = 520;
@@ -190,6 +192,7 @@ function Listing({ product }: { product: Product }) {
 
 function EventBody({ event, verdict }: { event: LedgerEvent; verdict?: Verdict }) {
   const e = event as LedgerEvent & Record<string, any>;
+  const { anchor, failed } = useContext(AnchorCtx);
   const tail = <div className="hash-line" style={{ marginTop: 6 }}><span>chain #{e.seq}</span><span>{shortHash(e.hash, 16)}</span></div>;
   switch (e.kind) {
     case "paypal_order_created":
@@ -199,10 +202,19 @@ function EventBody({ event, verdict }: { event: LedgerEvent; verdict?: Verdict }
             Order <span className="mono">{e.order_id}</span> · {money(e.amount, e.currency)} · {e.status}
             {e.vaulted ? " · vaulted, no redirect" : ""}
           </div>
-          <div className="hash-line" style={{ marginTop: 6 }}>
-            <span>invoice_id</span>
-            <span>{e.invoice_id ? `${e.invoice_id} (receipt hash sent to PayPal, as the ledger records it)` : "none: order predates anchoring"}</span>
-          </div>
+          {anchor && anchorState(anchor, failed) === "mismatch" && anchor.order_id === e.order_id ? (
+            <div className="hash-line anchor-mismatch" style={{ marginTop: 6 }}>
+              <span>invoice_id</span>
+              <span className="bad">
+                ledger says {shortHash(e.invoice_id, 12)} · PayPal holds {shortHash(anchor.invoice_id ?? "", 12)}
+              </span>
+            </div>
+          ) : (
+            <div className="hash-line" style={{ marginTop: 6 }}>
+              <span>invoice_id</span>
+              <span>{e.invoice_id ? `${e.invoice_id} (receipt hash sent to PayPal, as the ledger records it)` : "none: order predates anchoring"}</span>
+            </div>
+          )}
           {tail}
         </>
       );

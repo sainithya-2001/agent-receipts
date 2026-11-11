@@ -52,3 +52,35 @@ def test_without_credentials_the_panel_gets_a_503_not_a_crash(monkeypatch):
     monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "")
     rid = scenarios.log_receipt(scenarios.get_scenario("wrong_size"))
     assert TestClient(app).get(f"/receipts/{rid}/paypal-anchor").status_code == 503
+
+
+@respx.mock
+def test_tampered_receipt_chain_verifies_but_panel_data_shows_the_edit():
+    """What the mismatch panel says: the chain still verifies; PayPal's copy differs; custom_id is the receipt's."""
+    from backend.ledger.tamper import rewrite_intent
+
+    rid = scenarios.log_receipt(scenarios.get_scenario("wrong_size"))
+    original = chain.intent_hash(rid)
+    ledger.append_event(rid, "paypal_order_created", {"order_id": "ORD1", "invoice_id": original})
+    rewrite_intent(rid, lambda body: body["mandate"]["constraints"].update(size="9"))
+    respx.post(f"{BASE}/v1/oauth2/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "t", "expires_in": 3600}))
+    respx.get(f"{BASE}/v2/payments/captures/CAP1").mock(
+        return_value=httpx.Response(200, json=capture(rid, original)))  # PayPal still holds the original hash
+    client = TestClient(app)
+    body = client.get(f"/receipts/{rid}/paypal-anchor", params={"capture_id": "CAP1"}).json()
+    assert ledger.verify_chain()["ok"] is True
+    assert client.get("/ledger/verify").json()["ok"] is True
+    assert body["ok"] is False and body["intent_hash"] != body["invoice_id"] == original
+    assert body["custom_id"] == rid and body["custom_id_ok"] is True
+
+
+@respx.mock
+def test_custom_id_of_another_receipt_is_reported_as_is():
+    rid = scenarios.log_receipt(scenarios.get_scenario("wrong_size"))
+    respx.post(f"{BASE}/v1/oauth2/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "t", "expires_in": 3600}))
+    respx.get(f"{BASE}/v2/payments/captures/CAP1").mock(
+        return_value=httpx.Response(200, json=capture("rcpt_0000000000000000", "0" * 64)))
+    body = TestClient(app).get(f"/receipts/{rid}/paypal-anchor", params={"capture_id": "CAP1"}).json()
+    assert body["custom_id"] == "rcpt_0000000000000000" and body["custom_id_ok"] is False
