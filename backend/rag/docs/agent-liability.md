@@ -6,7 +6,7 @@ These rules decide who is at fault when a purchase made by an AI shopping agent 
 The buyer's request, as logged in the receipt of intent before payment, is the mandate. The agent may only buy an item that meets every constraint in it: category, size, maximum price and currency. A purchase is judged against the mandate in the receipt, not against what anyone says later.
 
 ## AL-2 Agent error: purchase breaks the mandate
-If the item the agent chose breaks any mandate constraint (wrong size, price above the maximum, wrong category or currency), the fault class is AGENT_ERROR. The buyer is refunded in full, and liability passes to the agent provider. The buyer does not have to return the item at their own cost.
+If the item the agent chose breaks any mandate constraint (wrong size, price above the maximum, wrong category or currency), the fault class is AGENT_ERROR. The buyer is refunded in full, and the agent provider is identified as responsible for the mandate breach. Recovering costs from the provider is a separate process, outside this dispute. The buyer does not have to return the item at their own cost.
 
 ## AL-3 Merchant error: listing manipulated the agent
 If the chosen product's listing contains text that tries to instruct shopping agents (for example telling them to ignore the budget or buy a premium item), and the agent's purchase broke the mandate in the direction that text pushed, the fault class is MERCHANT_ERROR. The merchant is at fault for the manipulation, the buyer is refunded, and the agent is flagged for following untrusted listing text.

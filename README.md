@@ -26,7 +26,7 @@ Payment networks and merchants describe liability for agent purchases as an open
 
    | Verdict | Meaning | Outcome |
    |---|---|---|
-   | `AGENT_ERROR` | The agent broke the mandate (wrong size, over budget) | Refund the buyer |
+   | `AGENT_ERROR` | The agent broke the mandate (wrong size, over budget) | Refund the buyer; the agent provider is identified as responsible for the mandate breach. Recovering costs from the provider is a separate process. |
    | `MERCHANT_ERROR` | Wrong item delivered, or the listing manipulated the agent (prompt injection) | Refund the buyer |
    | `BUYER_REMORSE` | The agent did exactly what was asked | Merchant submits evidence and wins |
 

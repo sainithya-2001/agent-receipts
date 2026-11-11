@@ -180,7 +180,7 @@ Rules: the agent \*\*cannot\*\* create a PayPal order without a receipt\_id. Pay
 
 |---|---|---|
 
-| `AGENT\_ERROR` | Purchase violates the mandate (wrong size, over budget) | Refund buyer; liability to agent provider |
+| `AGENT\_ERROR` | Purchase violates the mandate (wrong size, over budget) | Refund the buyer; the agent provider is identified as responsible for the mandate breach. Recovering costs from the provider is a separate process. |
 
 | `MERCHANT\_ERROR` | Item delivered/listed differs from what was chosen, or listing manipulated the agent (prompt injection) | Refund buyer; merchant at fault |
 

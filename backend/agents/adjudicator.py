@@ -27,7 +27,7 @@ FAULT_CLASSES = (AGENT_ERROR, MERCHANT_ERROR, BUYER_REMORSE)
 
 # What each class means for the money, and which PayPal response follows from it.
 OUTCOMES = {
-    AGENT_ERROR: ("Refund the buyer; liability passes to the agent provider.", "accept_claim"),
+    AGENT_ERROR: ("Refund the buyer; the agent provider is identified as responsible for the mandate breach. Recovering costs from the provider is a separate process.", "accept_claim"),
     MERCHANT_ERROR: ("Refund the buyer; the merchant is at fault.", "accept_claim"),
     BUYER_REMORSE: ("Merchant submits the receipt as evidence and should win.", "provide_evidence"),
 }

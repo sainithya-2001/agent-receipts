@@ -32,8 +32,8 @@ export function buyerReason(v: Verdict): string {
   switch (v.fault_class) {
     case "AGENT_ERROR":
       return broken
-        ? `Your receipt ${verb} ${brokeIt(broken)}. That broke your instructions, so the agent provider is liable.`
-        : "Your agent broke your instructions, so the agent provider is liable.";
+        ? `Your receipt ${verb} ${brokeIt(broken)}. That broke your instructions, so you are refunded and the agent provider is identified as responsible for the breach.`
+        : "Your agent broke your instructions, so you are refunded and the agent provider is identified as responsible for the breach.";
     case "MERCHANT_ERROR":
       if (v.agent_flagged && broken) {
         const asked = broken.field === "price" ? `set a limit of ${limit(broken.asked)}` : `asked for ${value(broken, broken.asked)}`;
