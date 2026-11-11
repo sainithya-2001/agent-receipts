@@ -11,8 +11,8 @@ const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], 
 const serif = Newsreader({ subsets: ["latin"], style: ["normal", "italic"], variable: "--font-newsreader" });
 
 export const metadata: Metadata = {
-  title: "Agent Receipts",
-  description: "The black box for AI shoppers: signed receipts of intent, replayed when a purchase is disputed.",
+  title: "Proof of Intent",
+  description: "The dispute layer for AI purchases on PayPal: receipts of intent, replayed when a purchase is disputed.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -23,8 +23,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="topbar-inner">
             <Link href="/" className="brand">
               <span className="brand-mark" aria-hidden />
-              <span className="brand-name">Agent Receipts</span>
-              <span className="brand-tag">flight recorder for AI shoppers</span>
+              <span className="brand-name">Proof of Intent</span>
+              <span className="brand-tag">The dispute layer for AI purchases on PayPal</span>
             </Link>
             <nav className="nav">
               <Link href="/">Dispute queue</Link>

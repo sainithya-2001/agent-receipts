@@ -1,6 +1,6 @@
-# Agent Receipts
+# Proof of Intent
 
-**The black box for AI shoppers.** When an AI agent buys the wrong thing, Agent Receipts proves what it was asked to do, decides who is at fault, and settles the dispute through PayPal.
+**The dispute layer for AI purchases on PayPal.** When an AI agent buys the wrong thing, Proof of Intent proves what it was asked to do, decides who is at fault, and settles the dispute through PayPal.
 
 Built for the PayPal AI Hackathon: *Build what's next with PayPal and AI*.
 
@@ -17,7 +17,7 @@ AI agents are starting to shop for people. When one buys the wrong size, overspe
 
 Payment networks and merchants describe liability for agent purchases as an open problem: card-network frameworks for agent transactions leave non-fraud disputes unresolved, and merchants are left holding the loss.
 
-## What Agent Receipts does
+## What Proof of Intent does
 
 1. **Receipt before payment.** Before the shopping agent can pay, it must log a *receipt of intent*: the person's request, their limits (size, budget, category), every option the agent considered, its choice, and why. No receipt, no PayPal order.
 2. **Tamper-evident ledger.** Every receipt and PayPal event is SHA-256 hash-chained in an append-only ledger.
@@ -52,6 +52,13 @@ On the live demo's merchant console, the **Break the agent** cards run seeded fa
 Each run places a **real PayPal sandbox order** (vaulted, no login) with the receipt hash anchored. Only the dispute is simulated, so judges can try every case instantly. Real PayPal disputes are shown in the queue alongside them.
 
 The hosted demo **never files anything with PayPal** (`FILING_ENABLED=false`) and is rate-limited to protect the API budget.
+
+## Related work
+
+- **Agent Receipts protocol / Obsigna:** signed, hash-chained records of agent actions, built for audit and accountability.
+- **Mastercard Verifiable Intent and Google AP2 (intent and cart mandates):** signed authorization of what an agent may buy, checked at payment time.
+
+Proof of Intent differs in where the evidence is used. It treats the intent record as evidence once a PayPal dispute opens, rather than only as an audit log or an authorization check. It anchors the receipt hash in the PayPal order itself (`invoice_id`), so PayPal holds an independent fingerprint and later edits to the record are detectable. It decides fault with facts derived by code (integrity, field diff, listing injection) before the model is consulted, and the model can only choose among the verdicts those facts allow. Then it files the response through PayPal's Disputes API.
 
 ## How PayPal is used
 

@@ -1,4 +1,6 @@
-\# Agent Receipts — the black box for AI shoppers
+\# Proof of Intent — The dispute layer for AI purchases on PayPal
+
+Display name only: the repo, Render services and code identifiers stay `agent-receipts` / "receipt".
 
 
 
@@ -8,7 +10,7 @@ A PayPal AI Hackathon project (Devpost). Deadline: \*\*Nov 12, 2026, 3:00 PM EST
 
 
 
-When an AI agent buys something on a person's behalf and the purchase goes wrong, nobody can prove what the agent was asked to do. Agent Receipts fixes that:
+When an AI agent buys something on a person's behalf and the purchase goes wrong, nobody can prove what the agent was asked to do. Proof of Intent fixes that:
 
 
 
