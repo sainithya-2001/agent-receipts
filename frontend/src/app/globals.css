@@ -224,8 +224,8 @@ button { font: inherit; color: inherit; }
 .verdict-class.remorse { color: var(--green); }
 .verdict-class.review { color: var(--slate); }
 .verdict-body { padding: 14px 16px 16px; }
-.verdict-body p.explain { font-family: var(--serif); font-size: 17px; line-height: 1.4; margin: 0 0 14px; }
-.verdict-body p.explain::first-letter, .integrity > span:last-child::first-letter { text-transform: uppercase; }
+.verdict p.explain { font-family: var(--serif); font-size: 17px; line-height: 1.4; margin: 0 0 14px; }
+.verdict p.explain::first-letter, .integrity > span:last-child::first-letter { text-transform: uppercase; }
 
 .gauge { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .gauge-ticks { display: grid; grid-template-columns: repeat(20, 5px); gap: 2px; height: 18px; }
@@ -373,3 +373,19 @@ table.options .bad { color: var(--red); }
 .anchor-grid dt em { display: block; text-transform: none; letter-spacing: 0; font-style: normal; font-size: 11px; opacity: 0.8; }
 .anchor-grid dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 800px) { .anchor-head { flex-direction: column; align-items: flex-start; } .anchor-grid { grid-template-columns: 1fr; } }
+
+/* ---- verdict card: code facts vs the AI ruling ---- */
+.vsec { border-top: 1px solid var(--ink); padding: 16px 20px 20px; }
+.vsec.code { background: var(--paper-2); }
+.vsec.ai { background: var(--card); border-top-width: 2px; }
+.vsec-title { margin: 0 0 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; }
+.vsec.code .vsec-title { color: var(--slate); }
+.vsec-sub { font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em; text-transform: none; color: var(--muted); font-weight: 400; }
+.kv.facts { margin-top: 18px; grid-template-columns: 150px 1fr; }
+.chip { display: inline-block; font-family: var(--mono); font-size: 12px; padding: 2px 8px; margin: 0 6px 4px 0; border: 1px solid var(--rule-strong); background: var(--card); }
+.chip.bad { border-color: var(--red); color: var(--red); background: var(--red-wash); }
+.ai-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; }
+.outcome-line { font-size: 20px; font-weight: 600; margin: 4px 0 6px; }
+.note-box.override { border-color: var(--red); background: var(--red-wash); color: var(--ink); }
+.vsec .note-box { margin-bottom: 14px; }
+.vsec .block:first-child { margin-top: 0; }
