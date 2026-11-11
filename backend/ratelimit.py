@@ -58,6 +58,10 @@ class RateLimiter:
 
 
 limiter = RateLimiter()
+# Reading a request into constraints is a small Claude call made before every /shop run, so it has
+# its own counter with a looser limit and doesn't eat the shop runs' budget.
+parse_limiter = RateLimiter()
+PARSE_FACTOR = 4
 
 
 def visitor_of(request: Request) -> str:
@@ -81,8 +85,18 @@ def example_receipt() -> dict[str, str] | None:
 
 def demo_limit(request: Request) -> None:
     """FastAPI dependency for the costly routes. Raises 429 when a limit is reached."""
+    _enforce(request, limiter, 1)
+
+
+def demo_limit_parse(request: Request) -> None:
+    """The same limits, counted separately and PARSE_FACTOR times looser, for /mandate/parse."""
+    _enforce(request, parse_limiter, PARSE_FACTOR)
+
+
+def _enforce(request: Request, counter: RateLimiter, factor: int) -> None:
     settings = get_settings()
-    hit = limiter.check(visitor_of(request), settings.rate_limit_per_minute, settings.rate_limit_per_day)
+    hit = counter.check(visitor_of(request), settings.rate_limit_per_minute * factor,
+                        settings.rate_limit_per_day * factor)
     if hit is None:
         return
     which, retry_after = hit

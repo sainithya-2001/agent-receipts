@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
-import { authorizationText, canAuthorize, parseRequest } from "@/api/authorize";
+import { authorizationText, canAuthorize } from "@/api/authorize";
 import { money } from "@/api/format";
-import type { ShopJob, ShopJobEvent } from "@/api/types";
+import type { MandateConstraints, ShopJob, ShopJobEvent } from "@/api/types";
 import { DemoLimitNotice, demoLimitOf, type DemoLimitDetail } from "@/components/DemoLimit";
 
 const EXAMPLES = [
@@ -32,7 +32,7 @@ function describe(e: ShopJobEvent): { text: string; detail?: string; bad?: boole
       const c = e.constraints ?? {};
       const read = [c.category, c.size ? `size ${c.size}` : null, c.max_price != null ? `max ${money(c.max_price, c.currency)}` : null]
         .filter(Boolean).join(", ");
-      return { text: `Receipt of intent logged: ${e.receipt_id}`, detail: `The agent recorded your limits as: ${read || "none"}` };
+      return { text: `Receipt of intent logged: ${e.receipt_id}`, detail: `Recorded in the receipt exactly as you confirmed: ${read || "none"}` };
     }
     case "ordering":
       return { text: "Creating the PayPal order" };
@@ -44,20 +44,43 @@ function describe(e: ShopJobEvent): { text: string; detail?: string; bad?: boole
 export default function TaskPage() {
   const router = useRouter();
   const [text, setText] = useState(EXAMPLES[0]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [confirmed, setConfirmed] = useState<MandateConstraints | null>(null); // what /mandate/parse read, for this text
+  const [reading, setReading] = useState(false);
   const [job, setJob] = useState<ShopJob | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState<DemoLimitDetail | null>(null);
   const jobId = useRef<string | null>(null);
 
-  useEffect(() => {
-    api.catalog().then((c) => setCategories([...new Set(c.map((p) => p.category))]), () => {});
-  }, []);
-
-  const parsed = useMemo(() => parseRequest(text, categories), [text, categories]);
-  const ok = canAuthorize(text, parsed);
+  const ok = canAuthorize(confirmed);
   const busy = starting || job?.status === "running";
+
+  const edit = (next: string) => { setText(next); setConfirmed(null); setError(null); setLimit(null); };
+
+  // Claude reads the request into constraints. Those exact constraints are what the buyer confirms,
+  // what /shop receives, and what the receipt records.
+  async function readRequest(request = text) {
+    setError(null); setLimit(null); setConfirmed(null); setReading(true);
+    try {
+      setConfirmed((await api.parseMandate(request.trim())).constraints);
+    } catch (e) {
+      const d = demoLimitOf(e);
+      if (d) setLimit(d); else setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReading(false);
+    }
+  }
+
+  // /task?q=<request>&read=1 prefills the request and reads it straight away (handy for demos).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q");
+    if (q) {
+      setText(q);
+      if (params.get("read") === "1") void readRequest(q);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Poll the run until it finishes, then go to its receipt (unless the buyer must approve at PayPal).
   const polling = job?.job_id;
@@ -80,9 +103,10 @@ export default function TaskPage() {
   }, [status, receiptId, approveUrl, router]);
 
   async function authorize() {
+    if (!confirmed) return;
     setError(null); setLimit(null); setJob(null); setStarting(true);
     try {
-      const { job_id } = await api.startShop(text.trim());
+      const { job_id } = await api.startShop(text.trim(), confirmed);
       jobId.current = job_id;
       setJob({ job_id, status: "running", events: [], result: null, error: null });
     } catch (e) {
@@ -110,33 +134,47 @@ export default function TaskPage() {
       <section className="task">
         <label className="eyebrow" htmlFor="task-text">What should your agent buy?</label>
         <textarea
-          id="task-text" className="task-text" rows={2} value={text} disabled={busy}
-          onChange={(e) => setText(e.target.value)}
+          id="task-text" className="task-text" rows={2} value={text} disabled={busy || reading}
+          onChange={(e) => edit(e.target.value)}
         />
         <div className="task-examples">
           {EXAMPLES.map((x) => (
-            <button key={x} type="button" className="chip-btn" disabled={busy} onClick={() => setText(x)}>{x}</button>
+            <button key={x} type="button" className="chip-btn" disabled={busy || reading} onClick={() => edit(x)}>{x}</button>
           ))}
         </div>
 
-        <div className={`authorization${ok ? "" : " incomplete"}`}>
+        <div className={`authorization${confirmed && ok ? "" : " incomplete"}`}>
           <span className="eyebrow">Your authorization</span>
-          <p className="auth-text">{authorizationText(parsed)}</p>
-          <ul className="auth-parts">
-            <li><span>Spend limit</span><b>{parsed.maxPrice != null ? money(parsed.maxPrice) : "not found"}</b></li>
-            <li><span>Category</span><b>{parsed.category ?? "any"}</b></li>
-            <li><span>Size</span><b>{parsed.size ?? "any"}</b></li>
-          </ul>
-          <p className="muted" style={{ fontSize: 13, margin: "8px 0 0" }}>
-            {ok
-              ? "This is how your request reads to us. The agent's own reading is logged in the receipt, and shown below once it exists. PayPal sandbox only: no real money."
-              : "Add a spend limit, such as “under $120”: without one there is nothing to authorize."}
-          </p>
-          <div style={{ marginTop: 14 }}>
-            <button className="btn primary" type="button" onClick={authorize} disabled={!ok || busy}>
-              {busy ? "Agent is working…" : "Authorize"}
-            </button>
-          </div>
+          {!confirmed ? (
+            <>
+              <p className="auth-text muted">{reading ? "Reading your request…" : "Read your request to see exactly what you would be authorizing."}</p>
+              <div style={{ marginTop: 6 }}>
+                <button className="btn primary" type="button" onClick={() => readRequest()} disabled={reading || busy || !text.trim()}>
+                  {reading ? "Reading…" : "Read my request"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="auth-text">{authorizationText(confirmed)}</p>
+              <ul className="auth-parts">
+                <li><span>Spend limit</span><b>{confirmed.max_price != null ? money(confirmed.max_price, confirmed.currency) : "not found"}</b></li>
+                <li><span>Category</span><b>{confirmed.category ?? "any"}</b></li>
+                <li><span>Size</span><b>{confirmed.size ?? "any"}</b></li>
+                <li><span>Currency</span><b>{confirmed.currency}</b></li>
+              </ul>
+              <p className="muted" style={{ fontSize: 13, margin: "8px 0 0" }}>
+                {ok
+                  ? "These are the constraints the agent is given as fixed and the receipt records, exactly as shown. PayPal sandbox only: no real money."
+                  : "No spend limit was found. Add one, such as “under $120”, and read the request again: without a limit there is nothing to authorize."}
+              </p>
+              <div style={{ marginTop: 14 }}>
+                <button className="btn primary" type="button" onClick={authorize} disabled={!ok || busy}>
+                  {busy ? "Agent is working…" : "Authorize"}
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {limit && <DemoLimitNotice detail={limit} />}

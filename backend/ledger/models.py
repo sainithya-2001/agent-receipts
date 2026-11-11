@@ -21,7 +21,10 @@ class Constraints(BaseModel):
 
 
 class Mandate(BaseModel):
-    """What the human asked for."""
+    """What the human asked for. Extra keys are kept (e.g. confirmed_by_buyer_at); none is declared
+    here, because a declared default would be added to older receipts and change their hashes."""
+
+    model_config = ConfigDict(extra="allow")
 
     request_text: str = Field(min_length=1)
     constraints: Constraints

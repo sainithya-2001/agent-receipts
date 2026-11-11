@@ -4,6 +4,7 @@ A manual Anthropic tool-use loop over the catalog. It ends when the agent calls
 submit_choice, whose arguments become the mandate and agent_run parts of the receipt.
 Each tool call is recorded in agent_run["steps"] for the replay timeline.
 """
+import copy
 import json
 import logging
 from collections.abc import Callable
@@ -22,7 +23,7 @@ MAX_TURNS = 12
 SYSTEM = """You are a shopping agent. You buy one product for a person from a single merchant's catalog, and you work only for that person.
 
 How to work:
-1. Read the person's request and work out their constraints: product category, size, maximum price, and currency (USD unless they say otherwise). Use null for anything they didn't specify.
+1. Read the person's request and work out their constraints: product category, size, maximum price, and currency (USD unless they say otherwise). Use null for anything they didn't specify. If the message includes constraints the person has confirmed, those are fixed: use them exactly, never re-interpret or change them, and don't pass constraints to submit_choice.
 2. Search the catalog with search_products and look at products with get_product. Search more than once if the first search misses (for example, without a size filter, or with different words).
 3. Pick the single product that meets every constraint and best fits the request. Prefer the better match over the cheaper one when both fit.
 4. Finish by calling submit_choice exactly once. It records your decision; it does not pay. The person approves payment in PayPal afterwards.
@@ -149,16 +150,36 @@ def _check_choice(args: dict[str, Any]) -> None:
         raise ValueError(f"{pid} is not sold in size {size!r}; sizes: {product['sizes']}")
 
 
+def _tools_with_fixed_constraints() -> list[dict[str, Any]]:
+    """The tools minus submit_choice's constraints field: when the buyer has confirmed the
+    constraints, the agent has nothing to report there and no way to change them."""
+    tools = copy.deepcopy(TOOLS)
+    schema = next(t for t in tools if t["name"] == "submit_choice")["input_schema"]
+    schema["properties"].pop("constraints")
+    schema["required"].remove("constraints")
+    return tools
+
+
 def run(request_text: str, client: anthropic.Anthropic | None = None,
-        on_step: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
-    """Run the agent on a request. Returns {"mandate": ..., "agent_run": ...} per the receipt schema."""
+        on_step: Callable[[dict[str, Any]], None] | None = None,
+        constraints: dict[str, Any] | None = None, confirmed_at: str | None = None) -> dict[str, Any]:
+    """Run the agent on a request. Returns {"mandate": ..., "agent_run": ...} per the receipt schema.
+
+    constraints (confirmed by the buyer, with confirmed_at) are fixed: the agent is told them, can't
+    change them, and the receipt's mandate.constraints are exactly these."""
     client = client or anthropic.Anthropic()
-    messages: list[dict[str, Any]] = [{"role": "user", "content": request_text}]
+    content = request_text
+    tools = TOOLS
+    if constraints is not None:
+        content = (f"{request_text}\n\nConstraints the person has confirmed (fixed; use exactly as given):\n"
+                   f"{json.dumps(constraints)}")
+        tools = _tools_with_fixed_constraints()
+    messages: list[dict[str, Any]] = [{"role": "user", "content": content}]
     steps: list[dict[str, Any]] = []
 
     for _ in range(MAX_TURNS):
         response = create_message(
-            client, system=SYSTEM, messages=messages, tools=TOOLS, output_config={"effort": "medium"}
+            client, system=SYSTEM, messages=messages, tools=tools, output_config={"effort": "medium"}
         )
         # Append the full content (thinking blocks included) so the next turn sees it unchanged.
         messages.append({"role": "assistant", "content": response.content})
@@ -194,15 +215,22 @@ def run(request_text: str, client: anthropic.Anthropic | None = None,
                 on_step(step)
 
         if choice is not None:
-            return _build_result(request_text, choice, steps)
+            return _build_result(request_text, choice, steps, constraints, confirmed_at)
         messages.append({"role": "user", "content": results})
 
     raise ShoppingError(f"Agent did not finish within {MAX_TURNS} turns")
 
 
-def _build_result(request_text: str, choice: dict[str, Any], steps: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_result(request_text: str, choice: dict[str, Any], steps: list[dict[str, Any]],
+                  constraints: dict[str, Any] | None = None, confirmed_at: str | None = None) -> dict[str, Any]:
+    if constraints is not None:
+        mandate: dict[str, Any] = {"request_text": request_text, "constraints": dict(constraints)}  # exactly the confirmed ones
+        if confirmed_at:
+            mandate["confirmed_by_buyer_at"] = confirmed_at
+    else:
+        mandate = {"request_text": request_text, "constraints": choice["constraints"]}
     return {
-        "mandate": {"request_text": request_text, "constraints": choice["constraints"]},
+        "mandate": mandate,
         "agent_run": {
             "model": get_settings().anthropic_model,
             "options_considered": [

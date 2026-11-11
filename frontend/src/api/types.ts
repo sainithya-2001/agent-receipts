@@ -63,6 +63,14 @@ export interface PayPalAnchor {
   error: string | null;
 }
 
+/** What the buyer confirms on the task page: the constraints /mandate/parse read from the request. */
+export interface MandateConstraints {
+  category: string | null;
+  size: string | null;
+  max_price: number | null;
+  currency: string;
+}
+
 export interface ShopJobEvent {
   at: number;
   kind: "step" | "logged" | "ordering" | "ordered";

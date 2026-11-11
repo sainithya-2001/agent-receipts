@@ -1,4 +1,4 @@
-import type { PayPalAnchor, ShopJob, ChainStatus, Product, QueueRow, Receipt, ResolveResult, Scenario } from "./types";
+import type { MandateConstraints, PayPalAnchor, ShopJob, ChainStatus, Product, QueueRow, Receipt, ResolveResult, Scenario } from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, public detail: unknown) {
@@ -18,10 +18,15 @@ export const api = {
   receipt: (id: string) => call<Receipt>(`/receipts/${encodeURIComponent(id)}`),
   anchor: (id: string, captureId?: string | null) =>
     call<PayPalAnchor>(`/receipts/${encodeURIComponent(id)}/paypal-anchor${captureId ? `?capture_id=${encodeURIComponent(captureId)}` : ""}`),
-  startShop: (requestText: string) =>
+  parseMandate: (requestText: string) =>
+    call<{ request_text: string; constraints: MandateConstraints }>("/mandate/parse", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request_text: requestText }),
+    }),
+  startShop: (requestText: string, constraints: MandateConstraints) =>
     call<{ job_id: string }>("/shop", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ request_text: requestText, background: true }),
+      body: JSON.stringify({ request_text: requestText, background: true, constraints }),
     }),
   shopJob: (jobId: string) => call<ShopJob>(`/shop/jobs/${encodeURIComponent(jobId)}`),
   catalog: () => call<Product[]>("/catalog"),

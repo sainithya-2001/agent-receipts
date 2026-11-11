@@ -27,7 +27,7 @@ def wait(client, job_id):
     raise AssertionError("job did not finish")
 
 
-def fake_buy(request_text, paypal, client=None, progress=None):
+def fake_buy(request_text, paypal, client=None, progress=None, constraints=None):
     progress({"kind": "step", "step": {"tool": "search_products", "result_ids": ["p_01"]}})
     progress({"kind": "logged", "receipt_id": "rcpt_x", "constraints": {}, "chosen_product_id": "p_01"})
     progress({"kind": "ordering"})
@@ -66,7 +66,7 @@ def test_buy_emits_events_in_order(monkeypatch):
                 "agent_run": {"model": "m", "options_considered": [], "chosen_product_id": "p_03", "chosen_size": "8",
                               "reasoning": "r", "steps": []}}
 
-    def run(request_text, client=None, on_step=None):
+    def run(request_text, client=None, on_step=None, constraints=None, confirmed_at=None):
         on_step({"tool": "get_product", "result_ids": ["p_03"]})
         return decision
 

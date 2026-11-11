@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from backend import checkout, jobs, ledger, resolve, scenarios, shop
 from backend.catalog import load_products
 from backend.agents.adjudicator import AdjudicationError, listing_injection
+from backend.agents import mandate
 from backend.agents.evidence import EvidenceError
 from backend.agents.llm import RefusalError
 from backend.agents.shopping import ShoppingError
@@ -15,7 +16,8 @@ from backend.config import get_settings
 from backend.ledger import LedgerError
 from backend.paypal import webhooks
 from backend.paypal.client import PayPalClient, PayPalError
-from backend.ratelimit import demo_limit
+from backend.ledger.models import Constraints
+from backend.ratelimit import demo_limit, demo_limit_parse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
@@ -51,6 +53,23 @@ def health(deep: bool = False) -> dict:
 class ShopRequest(BaseModel):
     request_text: str
     background: bool = False  # true: start the run, answer at once with a job_id to poll
+    # The constraints the buyer confirmed (from /mandate/parse). Fixed for the agent and recorded
+    # as the receipt's mandate.constraints; without them the agent reads the request itself.
+    constraints: Constraints | None = None
+
+
+class ParseRequest(BaseModel):
+    request_text: str
+
+
+@app.post("/mandate/parse", dependencies=[Depends(demo_limit_parse)])
+def mandate_parse(req: ParseRequest) -> dict:
+    """Read a shopping request into constraints {category, size, max_price, currency} for the buyer
+    to confirm. Nothing is logged or bought."""
+    try:
+        return {"request_text": req.request_text, "constraints": mandate.parse(req.request_text)}
+    except (mandate.MandateError, RefusalError) as exc:
+        raise HTTPException(422, str(exc))
 
 
 def _paypal_error(exc: PayPalError) -> HTTPException:
@@ -65,10 +84,13 @@ def shop_route(req: ShopRequest) -> dict:
             paypal = PayPalClient()
         except ValueError as exc:
             raise HTTPException(503, str(exc))
-        return {"job_id": jobs.start(lambda progress: shop.buy(req.request_text, paypal, progress=progress),
-                                     _describe_shop_error)}
+        confirmed = req.constraints.model_dump(mode="json") if req.constraints else None
+        return {"job_id": jobs.start(
+            lambda progress: shop.buy(req.request_text, paypal, progress=progress, constraints=confirmed),
+            _describe_shop_error)}
     try:
-        return shop.buy(req.request_text, PayPalClient())
+        return shop.buy(req.request_text, PayPalClient(),
+                        constraints=req.constraints.model_dump(mode="json") if req.constraints else None)
     except (ShoppingError, RefusalError, ledger.InvalidReceipt) as exc:
         raise HTTPException(422, str(exc))
     except PayPalError as exc:
