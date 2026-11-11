@@ -58,7 +58,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
 
       <div className="ribbon">
         <span className={`stamp ${tone}`}>
-          {verdict?.status === "needs_review" ? "Needs review" : verdict?.fault_class ? FAULT_LABEL[verdict.fault_class] : "No verdict"}
+          {verdict?.status === "needs_review" ? "Needs review" : verdict?.fault_class ? FAULT_LABEL[verdict.fault_class] : disputeId ? "No verdict" : "No dispute"}
         </span>
         <span className="ribbon-ask">“{receipt.mandate.request_text}”</span>
         <span className="mono muted">{verdict?.cited_rule ? `rule ${verdict.cited_rule.id}` : ""}</span>
