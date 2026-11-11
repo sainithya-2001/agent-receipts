@@ -99,12 +99,15 @@ def ledger_verify() -> dict:
 
 
 @app.get("/receipts/{receipt_id}/paypal-anchor")
-def receipt_paypal_anchor(receipt_id: str, order_id: str | None = None) -> dict:
+def receipt_paypal_anchor(receipt_id: str, order_id: str | None = None, capture_id: str | None = None) -> dict:
     """Compare the receipt's recomputed intent hash with the invoice_id PayPal holds."""
     try:
-        return ledger.verify_receipt_against_paypal(receipt_id, PayPalClient(), order_id=order_id)
+        return ledger.verify_receipt_against_paypal(receipt_id, PayPalClient(), order_id=order_id,
+                                                    capture_id=capture_id)
     except PayPalError as exc:
         raise _paypal_error(exc)
+    except ValueError as exc:  # no PayPal credentials configured
+        raise HTTPException(503, str(exc))
 
 
 log = logging.getLogger(__name__)

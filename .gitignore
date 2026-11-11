@@ -226,3 +226,7 @@ __marimo__/
 *.sqlite3
 .env.*
 !.env.example
+
+# SQLite WAL/shm side files of the local ledger
+*.db-shm
+*.db-wal

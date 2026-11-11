@@ -17,7 +17,7 @@ def verify_receipt_against_paypal(
     receipt_id: str, paypal: PayPalClient, order_id: str | None = None, capture_id: str | None = None
 ) -> dict[str, Any]:
     """Returns {"ok", "anchored", "custom_id_ok", "receipt_id", "order_id", "capture_id", "intent_hash",
-    "invoice_id", "error"}.
+    "invoice_id", "custom_id", "error"}.
 
     Prefer capture_id from the dispute (disputed_transactions[].seller_transaction_id): it
     comes from PayPal, and the capture carries both custom_id and invoice_id. order_id works
@@ -26,7 +26,7 @@ def verify_receipt_against_paypal(
     no invoice_id (orders created before anchoring)."""
     result: dict[str, Any] = {"ok": False, "anchored": False, "custom_id_ok": False, "receipt_id": receipt_id,
                               "order_id": order_id, "capture_id": capture_id, "intent_hash": None,
-                              "invoice_id": None, "error": None}
+                              "invoice_id": None, "custom_id": None, "error": None}
     receipt = get_receipt(receipt_id)
     if receipt is None:
         return {**result, "error": "receipt not in the ledger"}
@@ -47,6 +47,7 @@ def verify_receipt_against_paypal(
         source = f"order {order_id}"
     result["invoice_id"] = held.get("invoice_id")
     result["anchored"] = result["invoice_id"] is not None
+    result["custom_id"] = held.get("custom_id")
     result["custom_id_ok"] = held.get("custom_id") == receipt_id
     if not result["custom_id_ok"]:
         return {**result, "error": f"{source} belongs to {held.get('custom_id')!r}, not this receipt"}

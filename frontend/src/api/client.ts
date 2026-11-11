@@ -1,4 +1,4 @@
-import type { ChainStatus, Product, QueueRow, Receipt, ResolveResult, Scenario } from "./types";
+import type { PayPalAnchor, ChainStatus, Product, QueueRow, Receipt, ResolveResult, Scenario } from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, public detail: unknown) {
@@ -16,6 +16,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   queue: (live = true) => call<{ items: QueueRow[]; paypal_error: string | null }>(`/disputes?live=${live}`),
   receipt: (id: string) => call<Receipt>(`/receipts/${encodeURIComponent(id)}`),
+  anchor: (id: string, captureId?: string | null) =>
+    call<PayPalAnchor>(`/receipts/${encodeURIComponent(id)}/paypal-anchor${captureId ? `?capture_id=${encodeURIComponent(captureId)}` : ""}`),
   catalog: () => call<Product[]>("/catalog"),
   chain: () => call<ChainStatus>("/ledger/verify"),
   scenarios: () => call<Scenario[]>("/scenarios"),

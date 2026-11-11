@@ -7,6 +7,7 @@ import { api, ApiError } from "@/api/client";
 import { FAULT_LABEL, shortHash, when } from "@/api/format";
 import { buildTimeline, pickVerdict } from "@/api/timeline";
 import type { LedgerEvent, Product, Receipt } from "@/api/types";
+import { AnchorPanel } from "@/components/AnchorPanel";
 import { faultTone } from "@/components/FaultTag";
 import { SplitPanes } from "@/components/SplitPanes";
 import { Timeline } from "@/components/Timeline";
@@ -60,6 +61,8 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
         <span className="ribbon-ask">“{receipt.mandate.request_text}”</span>
         <span className="mono muted">{verdict?.cited_rule ? `rule ${verdict.cited_rule.id}` : ""}</span>
       </div>
+
+      <AnchorPanel receipt={receipt} />
 
       <Timeline key={`${receipt.receipt_id}-${receipt.events.length}`} frames={frames} />
       <SplitPanes receipt={receipt} product={product} opened={opened} verdict={verdict} onChanged={load} />

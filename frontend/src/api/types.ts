@@ -50,6 +50,19 @@ export interface Receipt {
   events: LedgerEvent[];
 }
 
+export interface PayPalAnchor {
+  ok: boolean;
+  anchored: boolean;
+  custom_id_ok: boolean;
+  receipt_id: string;
+  order_id: string | null;
+  capture_id: string | null;
+  intent_hash: string | null;
+  invoice_id: string | null;
+  custom_id?: string | null;
+  error: string | null;
+}
+
 export interface DiffRow {
   field: string;
   asked: string | null;
