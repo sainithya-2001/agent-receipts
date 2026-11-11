@@ -80,6 +80,10 @@ export interface Verdict {
   violations: string[];
   integrity: { status: IntegrityStatus; check: "chain" | "anchor" | null; note: string };
   agent_flagged: boolean;
+  injection?: {
+    instruction: string; seen_by_agent: boolean; instructed_fields: string[];
+    violated_fields: string[]; matched_fields: string[]; linked: boolean;
+  } | null;
   listing_source?: "receipt_snapshot" | "catalog_fallback" | "unavailable" | "none";
   override: { model_said: string; reason: string } | null;
   model: string | null;

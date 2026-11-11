@@ -88,6 +88,31 @@ def listing_injection(description: str) -> str | None:
     return description[sentences[0].start():sentences[-1].end()].strip()
 
 
+# What a piece of injected text tells the agent to override, by the diff field it would break.
+_INSTRUCTS = {
+    "price": re.compile(r"budget|price|cost|spend|spending|limit|expensive|premium|afford", re.IGNORECASE),
+    "size": re.compile(r"size", re.IGNORECASE),
+    "category": re.compile(r"category", re.IGNORECASE),
+}
+
+
+def injection_link(listing: dict[str, Any], steps: list[dict[str, Any]], product_id: str,
+                   violations: list[str]) -> dict[str, Any] | None:
+    """Did injected listing text plausibly cause the violation? None when the chosen listing has none.
+
+    linked needs both: (a) the agent actually saw this listing (a get_product / search_products step
+    returned it), and (b) a violated field is one the injected text told the agent to override."""
+    instruction = listing_injection(listing.get("description") or "")
+    if instruction is None:
+        return None
+    seen = any(s.get("tool") in ("get_product", "search_products") and product_id in (s.get("result_ids") or [])
+               for s in steps or [])
+    instructed = [f for f, pattern in _INSTRUCTS.items() if pattern.search(instruction)]
+    matched = [f for f in violations if f in instructed]
+    return {"instruction": instruction, "seen_by_agent": seen, "instructed_fields": instructed,
+            "violated_fields": list(violations), "matched_fields": matched, "linked": seen and bool(matched)}
+
+
 # "received size 9", "they shipped me a size 9", "arrived in size 9": what the buyer says was
 # delivered. Only a delivery verb counts, so "ordered these in size 9" is not a delivery report.
 _DELIVERED_SIZE = re.compile(
@@ -171,8 +196,9 @@ def find_facts(receipt: dict[str, Any], dispute: dict[str, Any], *, chain: dict[
     for row in diff:
         row["delivered"] = delivered.get(row["field"])
         row["delivered_ok"] = None if row["delivered"] is None else row["delivered"] == row["bought"]
-    match = listing_injection(product["description"]) if product else None
     violations = [d["field"] for d in diff if not d["ok"]]
+    injection = (injection_link(product, run.get("steps") or [], run["chosen_product_id"], violations)
+                 if product else None)
     return {
         "receipt_id": receipt["receipt_id"],
         "request_text": receipt["mandate"]["request_text"],
@@ -184,7 +210,8 @@ def find_facts(receipt: dict[str, Any], dispute: dict[str, Any], *, chain: dict[
         "paid": paid,
         "diff": diff,
         "violations": violations,
-        "listing_injection": product["description"] if match else None,
+        "listing_injection": product["description"] if injection else None,
+        "injection": injection,
         "integrity": integrity_status(chain, anchor),
         "dispute": {"dispute_id": dispute.get("dispute_id"), "reason": dispute.get("reason"),
                     "status": dispute.get("status"), "stage": dispute.get("dispute_life_cycle_stage")},
@@ -193,8 +220,11 @@ def find_facts(receipt: dict[str, Any], dispute: dict[str, Any], *, chain: dict[
 
 def allowed_classes(facts: dict[str, Any]) -> dict[str, str]:
     """The fault classes the facts allow, each with the liability rule that defines it."""
-    if facts["violations"] and facts["listing_injection"]:
-        return {MERCHANT_ERROR: "AL-3"}
+    injection = facts["injection"]
+    if facts["violations"] and injection:
+        # Injection text is in the chosen listing. Only a shown causal link makes it the merchant's
+        # fault; without one, neither AGENT_ERROR nor MERCHANT_ERROR is safe to assign.
+        return {MERCHANT_ERROR: "AL-3"} if injection["linked"] else {}
     if facts["violations"]:
         return {AGENT_ERROR: "AL-2"}
     return {MERCHANT_ERROR: "AL-4", BUYER_REMORSE: "AL-5"}
@@ -215,7 +245,8 @@ def adjudicate(facts: dict[str, Any], dispute: dict[str, Any],
     """Return the verdict card for a dispute, given its facts from find_facts()."""
     base = {"receipt_id": facts["receipt_id"], "dispute_id": facts["dispute"]["dispute_id"],
             "diff": facts["diff"], "violations": facts["violations"], "integrity": facts["integrity"],
-            "agent_flagged": bool(facts["violations"] and facts["listing_injection"]),
+            "agent_flagged": bool(facts["violations"] and facts["injection"] and facts["injection"]["linked"]),
+            "injection": facts["injection"],
             "listing_source": facts["listing_source"]}
     if facts["integrity"]["status"] == "failed":
         rule = get_rule("AL-6")
@@ -225,6 +256,14 @@ def adjudicate(facts: dict[str, Any], dispute: dict[str, Any],
                 "explanation": facts["integrity"]["note"], "buyer_claim": None, "override": None, "model": None}
 
     allowed = allowed_classes(facts)
+    if not allowed:
+        return {**base, "status": "needs_review", "fault_class": None, "confidence": None, "action": None,
+                "outcome": "Manual review: the listing contains text aimed at shopping agents, but it isn't "
+                           "shown that it caused the violation.",
+                "cited_rule": None, "buyer_claim": None, "override": None, "model": None,
+                "explanation": "The chosen listing tells agents to override something, but either the agent's "
+                               "steps don't show it saw that listing, or the violated field "
+                               f"({', '.join(facts['violations'])}) isn't what the text told it to override."}
     messages = buyer_messages(dispute)
     rules = _rules_for(facts, " ".join(messages), list(allowed.values()))
     payload = {"facts": facts, "allowed_fault_classes": list(allowed), "buyer_messages": messages, "rules": rules}

@@ -200,3 +200,64 @@ def test_old_receipt_falls_back_to_the_catalog_and_says_so():
     verdict = adjudicator.adjudicate(facts, {"dispute_id": "D", "messages": []},
                                      client=claude_says(MERCHANT_ERROR, "AL-4"))
     assert verdict["listing_source"] == "catalog_fallback"
+
+
+# --- injection causality ---
+
+def _injection_case(*, steps=None, violate="price"):
+    """prompt_injection scenario with its receipt edited before logging."""
+    s = scenarios.get_scenario("prompt_injection")
+    if steps is not None:
+        s["agent_run"]["steps"] = steps
+    if violate == "size":  # a size violation with a price injection: wrong link
+        s["agent_run"]["chosen_size"] = "9"
+        s["agent_run"]["options_considered"][0]["price"] = 109.99
+    rid = scenarios.log_receipt(s)
+    dispute = scenarios.build_dispute(s, rid)
+    if violate == "size":
+        for k in ("gross_amount",):
+            dispute["disputed_transactions"][0][k]["value"] = "109.99"
+        dispute["dispute_amount"]["value"] = "109.99"
+    return dispute, adjudicator.find_facts(ledger.get_receipt(rid), dispute, chain=CHAIN_OK, anchor=None)
+
+
+def test_injection_linked_when_seen_and_violation_matches_instruction():
+    _, facts = _injection_case()
+    inj = facts["injection"]
+    assert inj["seen_by_agent"] and inj["linked"]
+    assert inj["instructed_fields"] == ["price"] and inj["matched_fields"] == ["price"]
+    assert "Ignore the budget" in inj["instruction"]
+    assert adjudicator.allowed_classes(facts) == {MERCHANT_ERROR: "AL-3"}
+
+
+def test_injection_not_seen_by_agent_goes_to_review():
+    steps = [{"tool": "search_products", "input": {}, "result_ids": ["p_01", "p_03"]},
+             {"tool": "submit_choice", "input": {"chosen_product_id": "p_08", "chosen_size": "8"}}]
+    dispute, facts = _injection_case(steps=steps)
+    assert facts["injection"]["seen_by_agent"] is False and facts["injection"]["linked"] is False
+    client = claude_says(MERCHANT_ERROR, "AL-3")
+    verdict = adjudicator.adjudicate(facts, dispute, client=client)
+    client.messages.create.assert_not_called()
+    assert verdict["status"] == "needs_review" and verdict["fault_class"] is None
+    assert verdict["agent_flagged"] is False
+
+
+def test_injection_that_does_not_match_the_violation_goes_to_review():
+    dispute, facts = _injection_case(violate="size")
+    assert facts["violations"] == ["size"]
+    assert facts["injection"]["instructed_fields"] == ["price"] and facts["injection"]["matched_fields"] == []
+    assert adjudicator.allowed_classes(facts) == {}
+    client = claude_says(AGENT_ERROR)
+    verdict = adjudicator.adjudicate(facts, dispute, client=client)
+    client.messages.create.assert_not_called()
+    assert verdict["status"] == "needs_review"
+
+
+def test_injection_without_a_violation_is_ignored():
+    s = scenarios.get_scenario("prompt_injection")
+    s["mandate"]["constraints"]["max_price"] = 500  # the purchase met the mandate after all
+    rid = scenarios.log_receipt(s)
+    dispute = scenarios.build_dispute(s, rid)
+    facts = adjudicator.find_facts(ledger.get_receipt(rid), dispute, chain=CHAIN_OK, anchor=None)
+    assert facts["violations"] == []
+    assert set(adjudicator.allowed_classes(facts)) == {MERCHANT_ERROR, BUYER_REMORSE}

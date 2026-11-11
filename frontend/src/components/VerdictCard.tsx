@@ -68,6 +68,13 @@ export function VerdictCard({ verdict }: { verdict: Verdict }) {
             <div style={{ marginTop: 6 }}><span className="tag agent">agent flagged</span>{" "}
               <span className="muted" style={{ fontSize: 13 }}>followed instructions from a product listing</span></div>
           )}
+          {verdict.injection && (
+            <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+              Listing text: “{verdict.injection.instruction}” — {verdict.injection.linked
+                ? `the agent saw it, and it told the agent to override ${verdict.injection.matched_fields.join(", ")}, which is what was violated.`
+                : "not shown to have caused the violation."}
+            </div>
+          )}
         </div>
 
         <div className="block">
