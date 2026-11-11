@@ -19,7 +19,7 @@ from typing import Any
 import anthropic
 
 from backend import checkout, ledger, resolve
-from backend.catalog import get_product
+from backend.catalog import get_product, listing_snapshot
 from backend.config import get_settings
 from backend.ledger.tamper import DEMO_MODEL, rewrite_intent
 from backend.paypal.client import PayPalClient
@@ -63,7 +63,9 @@ def get_scenario(name: str) -> dict[str, Any] | None:
 
 def log_receipt(scenario: dict[str, Any]) -> str:
     """Log the scenario's seeded intent as a new receipt."""
-    return ledger.log_intent(scenario["mandate"], {"model": SIMULATED_MODEL, **scenario["agent_run"]})
+    run = scenario["agent_run"]
+    snapshot = listing_snapshot(run["chosen_product_id"], run["chosen_size"])
+    return ledger.log_intent(scenario["mandate"], {"model": SIMULATED_MODEL, **run, "chosen_listing": snapshot})
 
 
 def build_dispute(scenario: dict[str, Any], receipt_id: str, capture_id: str | None = None) -> dict[str, Any]:

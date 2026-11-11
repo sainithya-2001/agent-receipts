@@ -11,6 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 from backend import ledger
+from backend.catalog import listing_snapshot
 from backend.ledger.models import Constraints, OptionConsidered
 
 mcp = MCPServer(
@@ -46,6 +47,7 @@ def log_intent(
             "chosen_product_id": chosen_product_id,
             "chosen_size": chosen_size,
             "reasoning": decision_summary,
+            "chosen_listing": listing_snapshot(chosen_product_id, chosen_size),
         },
     )
     receipt = ledger.get_receipt(receipt_id)

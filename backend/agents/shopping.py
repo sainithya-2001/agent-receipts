@@ -11,7 +11,7 @@ from typing import Any
 import anthropic
 
 from backend.agents.llm import create_message
-from backend.catalog import get_product, search_products
+from backend.catalog import get_product, listing_snapshot, search_products
 from backend.config import get_settings
 
 log = logging.getLogger(__name__)
@@ -208,6 +208,7 @@ def _build_result(request_text: str, choice: dict[str, Any], steps: list[dict[st
             "chosen_product_id": choice["chosen_product_id"],
             "chosen_size": choice["chosen_size"],
             "reasoning": choice["decision_summary"],
+            "chosen_listing": listing_snapshot(choice["chosen_product_id"], choice["chosen_size"]),
             "steps": steps,
         },
     }

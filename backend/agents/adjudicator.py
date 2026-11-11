@@ -125,12 +125,26 @@ def integrity_status(chain: dict[str, Any], anchor: dict[str, Any] | None) -> di
     return {"status": "failed", "check": "anchor", "note": anchor["error"]}
 
 
+def chosen_listing(run: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+    """The listing to judge the purchase against, and where it came from. The receipt's own
+    snapshot (taken at intent time) is preferred; receipts logged before snapshots existed
+    fall back to today's catalog entry, which may have changed since."""
+    pid = run.get("chosen_product_id")
+    if not pid:
+        return None, "none"
+    snapshot = run.get("chosen_listing")
+    if snapshot and snapshot.get("product_id") == pid:
+        return snapshot, "receipt_snapshot"
+    product = get_product(pid)
+    return (product, "catalog_fallback") if product else (None, "unavailable")
+
+
 def find_facts(receipt: dict[str, Any], dispute: dict[str, Any], *, chain: dict[str, Any],
                anchor: dict[str, Any] | None) -> dict[str, Any]:
     """The deterministic part: everything the verdict rests on that code can check."""
     constraints = receipt["mandate"]["constraints"]
     run = receipt["agent_run"]
-    product = get_product(run["chosen_product_id"]) if run.get("chosen_product_id") else None
+    product, listing_source = chosen_listing(run)
     txn = (dispute.get("disputed_transactions") or [{}])[0]
     charged = txn.get("gross_amount") or dispute.get("dispute_amount") or {}
     paid = _money(charged.get("value"))
@@ -162,6 +176,7 @@ def find_facts(receipt: dict[str, Any], dispute: dict[str, Any], *, chain: dict[
     return {
         "receipt_id": receipt["receipt_id"],
         "request_text": receipt["mandate"]["request_text"],
+        "listing_source": listing_source,
         "constraints": constraints,
         "chosen": {"product_id": run.get("chosen_product_id"), "name": product["name"] if product else None,
                    "size": run.get("chosen_size"), "listed_price": product["price"] if product else None},
@@ -200,7 +215,8 @@ def adjudicate(facts: dict[str, Any], dispute: dict[str, Any],
     """Return the verdict card for a dispute, given its facts from find_facts()."""
     base = {"receipt_id": facts["receipt_id"], "dispute_id": facts["dispute"]["dispute_id"],
             "diff": facts["diff"], "violations": facts["violations"], "integrity": facts["integrity"],
-            "agent_flagged": bool(facts["violations"] and facts["listing_injection"])}
+            "agent_flagged": bool(facts["violations"] and facts["listing_injection"]),
+            "listing_source": facts["listing_source"]}
     if facts["integrity"]["status"] == "failed":
         rule = get_rule("AL-6")
         return {**base, "status": "needs_review", "fault_class": None, "confidence": None, "action": None,

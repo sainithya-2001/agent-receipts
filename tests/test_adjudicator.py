@@ -161,3 +161,42 @@ def test_delivered_size_is_compared_with_what_was_bought():
     assert size["ok"] is True and size["delivered"] == "9" and size["delivered_ok"] is False
     price = next(d for d in facts["diff"] if d["field"] == "price")
     assert price["delivered"] is None and price["delivered_ok"] is None
+
+
+# --- listing snapshot (agent_run.chosen_listing) ---
+
+def test_receipt_stores_a_listing_snapshot():
+    _, _, facts = scenario_case("wrong_size")
+    rid = facts["receipt_id"]
+    listing = ledger.get_receipt(rid)["agent_run"]["chosen_listing"]
+    assert listing["product_id"] == "p_03" and listing["name"] == "Aero Glide 4"
+    assert listing["price"] == 109.99 and listing["currency"] == "USD" and listing["category"] == "running shoes"
+    assert "ushioned" in listing["description"] and listing["attrs"]["size"] == "9"
+    assert facts["listing_source"] == "receipt_snapshot"
+
+
+def test_facts_use_the_snapshot_not_the_current_catalog(monkeypatch):
+    s = scenarios.get_scenario("buyer_remorse")
+    rid = scenarios.log_receipt(s)
+    dispute = scenarios.build_dispute(s, rid)
+    dispute["disputed_transactions"][0].pop("gross_amount")
+    dispute.pop("dispute_amount")
+    # The catalog changes after the purchase: price up, category changed.
+    changed = {**adjudicator.get_product("p_03"), "price": 300.0, "category": "sandals", "name": "Renamed"}
+    monkeypatch.setattr(adjudicator, "get_product", lambda pid: changed)
+    facts = adjudicator.find_facts(ledger.get_receipt(rid), dispute, chain=CHAIN_OK, anchor=None)
+    assert facts["listing_source"] == "receipt_snapshot"
+    assert facts["paid"] == 109.99 and facts["violations"] == []
+    assert facts["chosen"]["name"] == "Aero Glide 4"
+
+
+def test_old_receipt_falls_back_to_the_catalog_and_says_so():
+    ledger.load_staged()
+    receipt = ledger.get_receipt("rcpt_627e333bfb7045c1")
+    assert "chosen_listing" not in receipt["agent_run"]  # logged before snapshots; its hash must not change
+    assert ledger.verify_chain()["ok"]
+    facts = adjudicator.find_facts(receipt, {"dispute_id": "D", "messages": []}, chain=CHAIN_OK, anchor=None)
+    assert facts["listing_source"] == "catalog_fallback"
+    verdict = adjudicator.adjudicate(facts, {"dispute_id": "D", "messages": []},
+                                     client=claude_says(MERCHANT_ERROR, "AL-4"))
+    assert verdict["listing_source"] == "catalog_fallback"

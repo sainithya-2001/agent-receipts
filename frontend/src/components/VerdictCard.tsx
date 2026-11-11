@@ -75,6 +75,19 @@ export function VerdictCard({ verdict }: { verdict: Verdict }) {
           <div className="integrity"><IntegrityTag status={verdict.integrity.status} check={verdict.integrity.check} /><span>{verdict.integrity.note}</span></div>
         </div>
 
+        {verdict.listing_source && (
+          <div className="block">
+            <span className="eyebrow">Listing judged against</span>
+            <div style={{ fontSize: 13 }}>
+              {verdict.listing_source === "receipt_snapshot"
+                ? "Snapshot stored in the receipt at purchase time."
+                : verdict.listing_source === "catalog_fallback"
+                  ? "Today's catalog entry (catalog_fallback): this receipt predates listing snapshots, so the listing may have changed since."
+                  : "No listing available."}
+            </div>
+          </div>
+        )}
+
         {verdict.override && (
           <div className="block note-box">
             Model answered <span className="mono">{verdict.override.model_said}</span>; overridden. {verdict.override.reason}

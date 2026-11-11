@@ -18,6 +18,20 @@ def get_product(product_id: str) -> dict | None:
     return next((p for p in load_products() if p["product_id"] == product_id), None)
 
 
+def listing_snapshot(product_id: str | None, size: str | None = None) -> dict | None:
+    """The chosen listing as the agent saw it, for the receipt (agent_run.chosen_listing): name,
+    category, price, currency, description and attributes. The catalog can change later; the
+    receipt keeps this copy, so a dispute is judged against what was actually listed."""
+    product = get_product(product_id) if product_id else None
+    if product is None:
+        return None
+    return {
+        "product_id": product["product_id"], "name": product["name"], "category": product["category"],
+        "price": product["price"], "currency": product["currency"], "description": product["description"],
+        "attrs": {"brand": product["brand"], "size": size, "sizes": list(product["sizes"])},
+    }
+
+
 def search_products(
     query: str | None = None,
     category: str | None = None,
