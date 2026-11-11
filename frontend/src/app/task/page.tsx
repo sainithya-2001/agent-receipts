@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
 import { authorizationText, canAuthorize } from "@/api/authorize";
 import { money } from "@/api/format";
-import type { MandateConstraints, ShopJob, ShopJobEvent } from "@/api/types";
+import type { ShopJob, ShopJobEvent, StoredMandate } from "@/api/types";
 import { DemoLimitNotice, demoLimitOf, type DemoLimitDetail } from "@/components/DemoLimit";
 
 const EXAMPLES = [
@@ -44,7 +44,8 @@ function describe(e: ShopJobEvent): { text: string; detail?: string; bad?: boole
 export default function TaskPage() {
   const router = useRouter();
   const [text, setText] = useState(EXAMPLES[0]);
-  const [confirmed, setConfirmed] = useState<MandateConstraints | null>(null); // what /mandate/parse read, for this text
+  const [parsed, setParsed] = useState<StoredMandate | null>(null); // what /mandate/parse read and stored, for this text
+  const confirmed = parsed?.constraints ?? null;
   const [reading, setReading] = useState(false);
   const [job, setJob] = useState<ShopJob | null>(null);
   const [starting, setStarting] = useState(false);
@@ -55,14 +56,14 @@ export default function TaskPage() {
   const ok = canAuthorize(confirmed);
   const busy = starting || job?.status === "running";
 
-  const edit = (next: string) => { setText(next); setConfirmed(null); setError(null); setLimit(null); };
+  const edit = (next: string) => { setText(next); setParsed(null); setError(null); setLimit(null); };
 
   // Claude reads the request into constraints. Those exact constraints are what the buyer confirms,
-  // what /shop receives, and what the receipt records.
+  // what the server stores under a mandate_id, and what the receipt records once the buyer confirms.
   async function readRequest(request = text) {
-    setError(null); setLimit(null); setConfirmed(null); setReading(true);
+    setError(null); setLimit(null); setParsed(null); setReading(true);
     try {
-      setConfirmed((await api.parseMandate(request.trim())).constraints);
+      setParsed(await api.parseMandate(request.trim()));
     } catch (e) {
       const d = demoLimitOf(e);
       if (d) setLimit(d); else setError(e instanceof Error ? e.message : String(e));
@@ -103,10 +104,12 @@ export default function TaskPage() {
   }, [status, receiptId, approveUrl, router]);
 
   async function authorize() {
-    if (!confirmed) return;
+    if (!parsed) return;
     setError(null); setLimit(null); setJob(null); setStarting(true);
     try {
-      const { job_id } = await api.startShop(text.trim(), confirmed);
+      // Authorize is the confirmation: the server stamps its time, then /shop accepts only this id.
+      await api.confirmMandate(parsed.mandate_id);
+      const { job_id } = await api.startShop(parsed.mandate_id);
       jobId.current = job_id;
       setJob({ job_id, status: "running", events: [], result: null, error: null });
     } catch (e) {

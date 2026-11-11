@@ -1,4 +1,4 @@
-import type { MandateConstraints, PayPalAnchor, ShopJob, ChainStatus, Product, QueueRow, Receipt, ResolveResult, Scenario } from "./types";
+import type { PayPalAnchor, ShopJob, ChainStatus, Product, QueueRow, Receipt, ResolveResult, Scenario, StoredMandate } from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, public detail: unknown) {
@@ -19,14 +19,17 @@ export const api = {
   anchor: (id: string, captureId?: string | null) =>
     call<PayPalAnchor>(`/receipts/${encodeURIComponent(id)}/paypal-anchor${captureId ? `?capture_id=${encodeURIComponent(captureId)}` : ""}`),
   parseMandate: (requestText: string) =>
-    call<{ request_text: string; constraints: MandateConstraints }>("/mandate/parse", {
+    call<StoredMandate>("/mandate/parse", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ request_text: requestText }),
     }),
-  startShop: (requestText: string, constraints: MandateConstraints) =>
+  confirmMandate: (mandateId: string) =>
+    call<StoredMandate>(`/mandate/${encodeURIComponent(mandateId)}/confirm`, { method: "POST" }),
+  // /shop takes only the id of a mandate the buyer confirmed; the server holds the request and limits.
+  startShop: (mandateId: string) =>
     call<{ job_id: string }>("/shop", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ request_text: requestText, background: true, constraints }),
+      body: JSON.stringify({ mandate_id: mandateId, background: true }),
     }),
   shopJob: (jobId: string) => call<ShopJob>(`/shop/jobs/${encodeURIComponent(jobId)}`),
   catalog: () => call<Product[]>("/catalog"),

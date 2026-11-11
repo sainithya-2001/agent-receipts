@@ -36,7 +36,7 @@ export interface LedgerEvent {
 export interface Receipt {
   receipt_id: string;
   created_at: string;
-  mandate: { request_text: string; constraints: Constraints; confirmed_by_buyer_at?: string };
+  mandate: { request_text: string; constraints: Constraints; confirmed_by_buyer_at?: string; confirmation?: string };
   agent_run: {
     model: string;
     options_considered: OptionConsidered[];
@@ -194,4 +194,12 @@ export interface ChainStatus {
   head_hash: string;
   bad_seq: number | null;
   error: string | null;
+}
+
+/** A parsed request the server holds under mandate_id until the buyer confirms it. */
+export interface StoredMandate {
+  mandate_id: string;
+  request_text: string;
+  constraints: MandateConstraints;
+  confirmed_by_buyer_at: string | null;
 }

@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import ledger, resolve, scenarios
+from backend import ledger, mandates, resolve, scenarios
 from backend.app.main import app
 from backend.ratelimit import RateLimiter, example_receipt, limiter
 from tests.test_disputes_flow import fake_claude, real_dispute
@@ -84,7 +84,7 @@ def test_daily_cap_applies_across_routes_and_visitors(monkeypatch):
     client = TestClient(app)
     with patch("backend.app.main.shop.buy", return_value={"ok": True}):
         for i in range(5):  # 5 runs from 5 visitors hit the daily cap of 5
-            r = client.post("/shop", json={"request_text": "x"}, headers={"X-Forwarded-For": f"192.0.2.{i}"})
+            r = client.post("/shop", json={"mandate_id": mandates.confirm(mandates.create("x", {"currency": "USD"})["mandate_id"])["mandate_id"]}, headers={"X-Forwarded-For": f"192.0.2.{i}"})
             assert r.status_code == 200
     r = client.post("/disputes/PP-D-1/resolve", headers={"X-Forwarded-For": "192.0.2.99"})
     assert r.status_code == 429 and r.json()["detail"]["limit"] == "day"

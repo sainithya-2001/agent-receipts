@@ -25,7 +25,7 @@ def main(argv: list[str]) -> int:
         if argv[0] == "capture":
             print(json.dumps(checkout.complete(paypal, argv[1]), indent=2))
         else:
-            print(json.dumps(shop.buy(" ".join(argv), paypal), indent=2))
+            print(json.dumps(shop.buy(" ".join(argv), paypal, confirmation="cli"), indent=2))
     except PayPalError as exc:
         print(f"FAILED: {exc}\n{json.dumps(exc.body, indent=2)}")
         return 1

@@ -1,5 +1,5 @@
 // The authorization sentence is built from the constraints the buyer confirms. Those same
-// constraints are sent to /shop and recorded in the receipt, so what is shown here is exactly
+// constraints are stored by the server under a mandate_id, confirmed through the API and recorded in the receipt, so what is shown here is exactly
 // what the agent is bound by (no separate client-side reading of the request).
 import type { MandateConstraints } from "./types";
 

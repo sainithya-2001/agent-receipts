@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import jobs, shop
+from backend import jobs, mandates, shop
 from backend.agents.shopping import ShoppingError
 from backend.app.main import app
 
@@ -27,7 +27,13 @@ def wait(client, job_id):
     raise AssertionError("job did not finish")
 
 
-def fake_buy(request_text, paypal, client=None, progress=None, constraints=None):
+def confirmed_mandate(request_text="shoes"):
+    """A mandate that went through parse -> confirm, as the task page does."""
+    m = mandates.create(request_text, {"category": "running shoes", "size": "8", "max_price": 120.0, "currency": "USD"})
+    return mandates.confirm(m["mandate_id"])["mandate_id"]
+
+
+def fake_buy(request_text, paypal, client=None, progress=None, constraints=None, confirmed_at=None, confirmation='cli'):
     progress({"kind": "step", "step": {"tool": "search_products", "result_ids": ["p_01"]}})
     progress({"kind": "logged", "receipt_id": "rcpt_x", "constraints": {}, "chosen_product_id": "p_01"})
     progress({"kind": "ordering"})
@@ -37,7 +43,7 @@ def fake_buy(request_text, paypal, client=None, progress=None, constraints=None)
 def test_background_run_reports_progress_then_result():
     client = TestClient(app)
     with patch("backend.app.main.shop.buy", side_effect=fake_buy):
-        started = client.post("/shop", json={"request_text": "shoes", "background": True})
+        started = client.post("/shop", json={"mandate_id": confirmed_mandate(), "background": True})
         job = wait(client, started.json()["job_id"])
     assert job["status"] == "done" and job["result"]["receipt_id"] == "rcpt_x"
     assert [e["kind"] for e in job["events"]] == ["step", "logged", "ordering"]
@@ -46,7 +52,7 @@ def test_background_run_reports_progress_then_result():
 def test_background_error_is_reported_not_raised():
     client = TestClient(app)
     with patch("backend.app.main.shop.buy", side_effect=ShoppingError("Agent hit max_tokens")):
-        job = wait(client, client.post("/shop", json={"request_text": "x", "background": True}).json()["job_id"])
+        job = wait(client, client.post("/shop", json={"mandate_id": confirmed_mandate(), "background": True}).json()["job_id"])
     assert job["status"] == "error" and "max_tokens" in job["error"]
 
 
@@ -57,7 +63,7 @@ def test_unknown_job_is_404():
 def test_rate_limit_applies_to_background_runs():
     client = TestClient(app)
     with patch("backend.app.main.shop.buy", side_effect=fake_buy):
-        codes = [client.post("/shop", json={"request_text": "x", "background": True}).status_code for _ in range(3)]
+        codes = [client.post("/shop", json={"mandate_id": confirmed_mandate(), "background": True}).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
 
 

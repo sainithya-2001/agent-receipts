@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import ledger, shop
+from backend import ledger, mandates, scenarios, shop
 from backend.agents import mandate, shopping
 from backend.app.main import app
 
@@ -103,12 +103,13 @@ def test_receipt_constraints_equal_the_confirmed_constraints(monkeypatch):
     # Even if the agent returned different constraints, the receipt records the confirmed ones.
     sneaky = {"constraints": {"category": "running shoes", "size": "9", "max_price": 500, "currency": "USD"}}
     monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid: {"status": "COMPLETED"})
-    result = shop.buy(REQUEST, paypal=None, client=agent_client(sneaky), constraints=CONFIRMED)
+    result = shop.buy(REQUEST, paypal=None, client=agent_client(sneaky), constraints=CONFIRMED,
+                      confirmed_at="2026-11-11T10:00:00+00:00")
     receipt = ledger.get_receipt(result["receipt_id"])
     assert receipt["mandate"]["constraints"] == CONFIRMED
     assert receipt["mandate"]["request_text"] == REQUEST
-    stamp = datetime.fromisoformat(receipt["mandate"]["confirmed_by_buyer_at"])
-    assert stamp.tzinfo is not None
+    assert receipt["mandate"]["confirmed_by_buyer_at"] == "2026-11-11T10:00:00+00:00"  # as given, not "now"
+    assert receipt["mandate"]["confirmation"] == "buyer"
     assert ledger.verify_chain()["ok"] is True
 
 
@@ -118,12 +119,97 @@ def test_without_confirmed_constraints_nothing_changes(monkeypatch):
     result = shop.buy(REQUEST, paypal=None, client=c)
     receipt = ledger.get_receipt(result["receipt_id"])
     assert receipt["mandate"]["constraints"] == CONFIRMED and "confirmed_by_buyer_at" not in receipt["mandate"]
+    assert receipt["mandate"]["confirmation"] == "cli"
 
 
-def test_shop_route_passes_confirmed_constraints_to_the_agent():
+def test_scenario_receipts_record_scripted_confirmation():
+    rid = scenarios.log_receipt(scenarios.get_scenario("wrong_size"))
+    mandate_ = ledger.get_receipt(rid)["mandate"]
+    assert mandate_["confirmation"] == "scripted" and "confirmed_by_buyer_at" not in mandate_
+
+
+# --- confirmation is a backend requirement ---
+
+def parsed(client):
+    with patch("backend.app.main.mandate.parse", return_value=CONFIRMED):
+        r = client.post("/mandate/parse", json={"request_text": REQUEST})
+    assert r.status_code == 200
+    return r.json()
+
+
+def test_parse_stores_the_mandate_unconfirmed():
+    body = parsed(TestClient(app))
+    assert body["mandate_id"].startswith("mnd_") and body["constraints"] == CONFIRMED
+    assert body["request_text"] == REQUEST and body["confirmed_by_buyer_at"] is None
+
+
+def test_unconfirmed_mandate_is_rejected_by_shop():
+    client = TestClient(app)
+    mandate_id = parsed(client)["mandate_id"]
+    with patch("backend.app.main.shop.buy") as buy:
+        r = client.post("/shop", json={"mandate_id": mandate_id})
+    assert r.status_code == 422 and "confirmed" in r.json()["detail"]
+    buy.assert_not_called()
+
+
+def test_free_text_and_unknown_ids_are_rejected_by_shop():
+    client = TestClient(app)
+    with patch("backend.app.main.shop.buy") as buy:
+        assert client.post("/shop", json={"request_text": REQUEST}).status_code == 422
+        assert client.post("/shop", json={"request_text": REQUEST, "constraints": CONFIRMED}).status_code == 422
+        both = client.post("/shop", json={"mandate_id": parsed(client)["mandate_id"], "request_text": "other"})
+        assert both.status_code == 422  # no side channel next to the id
+        assert client.post("/shop", json={"mandate_id": "mnd_nope"}).status_code == 404
+    buy.assert_not_called()
+
+
+def test_confirmed_timestamp_comes_from_the_confirm_step_and_is_idempotent():
+    client = TestClient(app)
+    mandate_id = parsed(client)["mandate_id"]
+    first = client.post(f"/mandate/{mandate_id}/confirm").json()
+    stamp = datetime.fromisoformat(first["confirmed_by_buyer_at"])
+    assert stamp.tzinfo is not None and first["constraints"] == CONFIRMED
+    assert client.post(f"/mandate/{mandate_id}/confirm").json()["confirmed_by_buyer_at"] == first["confirmed_by_buyer_at"]
+    assert client.post("/mandate/mnd_nope/confirm").status_code == 404
+
+    # /shop passes that exact stamp on, not a new "now"
     with patch("backend.app.main.shop.buy", return_value={"ok": True}) as buy:
-        r = TestClient(app).post("/shop", json={"request_text": REQUEST, "constraints": CONFIRMED})
-    assert r.status_code == 200 and buy.call_args.kwargs["constraints"] == CONFIRMED
+        r = client.post("/shop", json={"mandate_id": mandate_id})
+    assert r.status_code == 200
+    assert buy.call_args.kwargs["confirmed_at"] == first["confirmed_by_buyer_at"]
+    assert buy.call_args.kwargs["constraints"] == CONFIRMED
+    assert buy.call_args.args[0] == REQUEST  # the request text comes from the stored mandate
+
+
+def test_receipt_carries_the_confirm_step_time_end_to_end(monkeypatch):
+    monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid: {"status": "COMPLETED"})
+    client = TestClient(app)
+    mandate_id = parsed(client)["mandate_id"]
+    stamp = client.post(f"/mandate/{mandate_id}/confirm").json()["confirmed_by_buyer_at"]
+    real_buy = shop.buy
+    with patch("backend.app.main.shop.buy",
+               side_effect=lambda *a, **kw: real_buy(*a, client=agent_client(), **kw)):
+        r = client.post("/shop", json={"mandate_id": mandate_id})
+    assert r.status_code == 200
+    mandate_ = ledger.get_receipt(r.json()["receipt_id"])["mandate"]
+    assert mandate_["confirmed_by_buyer_at"] == stamp and mandate_["confirmation"] == "buyer"
+    assert mandate_["constraints"] == CONFIRMED
+
+
+def test_a_mandate_buys_once():
+    client = TestClient(app)
+    mandate_id = parsed(client)["mandate_id"]
+    client.post(f"/mandate/{mandate_id}/confirm")
+    with patch("backend.app.main.shop.buy", return_value={"ok": True}) as buy:
+        assert client.post("/shop", json={"mandate_id": mandate_id}).status_code == 200
+        again = client.post("/shop", json={"mandate_id": mandate_id})
+    assert again.status_code == 409 and "already been used" in again.json()["detail"]
+    assert buy.call_count == 1
+    # confirming a used mandate doesn't reopen it
+    client.post(f"/mandate/{mandate_id}/confirm")
+    with patch("backend.app.main.shop.buy") as buy:
+        assert client.post("/shop", json={"mandate_id": mandate_id}).status_code == 409
+    buy.assert_not_called()
 
 
 def test_staged_receipt_hash_is_unchanged():
