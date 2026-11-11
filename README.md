@@ -4,7 +4,7 @@
 
 Built for the PayPal AI Hackathon: *Build what's next with PayPal and AI*.
 
-- **Live demo:** `<HOSTED_URL>`
+- **Live demo:** https://agent-receipts-web.onrender.com (free hosting: first load can take ~60s)
 - **Demo video (under 3 min):** `<YOUTUBE_URL>`
 
 ![Replay timeline with the deviating step highlighted](docs/screenshots/replay.png)
@@ -55,8 +55,8 @@ The hosted demo **never files anything with PayPal** (`FILING_ENABLED=false`) an
 
 ## Related work
 
-- **Agent Receipts protocol / Obsigna:** signed, hash-chained records of agent actions, built for audit and accountability.
-- **Mastercard Verifiable Intent and Google AP2 (intent and cart mandates):** signed authorization of what an agent may buy, checked at payment time.
+- **Agent Receipts protocol / Obsigna:** cryptographically verifiable, hash-chained records of agent actions, built for audit and accountability.
+- **Mastercard Verifiable Intent and Google AP2 (intent and cart mandates):** cryptographically verifiable authorization of what an agent may buy, checked at payment time.
 
 Proof of Intent differs in where the evidence is used. It treats the intent record as evidence once a PayPal dispute opens, rather than only as an audit log or an authorization check. It anchors the receipt hash in the PayPal order itself (`invoice_id`), so PayPal holds an independent fingerprint and later edits to the record are detectable. It decides fault with facts derived by code (integrity, field diff, listing injection) before the model is consulted, and the model can only choose among the verdicts those facts allow. Then it files the response through PayPal's Disputes API.
 
@@ -114,7 +114,7 @@ flowchart LR
 
 ### 3. Backend
 ```bash
-git clone <REPO_URL>
+git clone https://github.com/sainithya-2001/agent-receipts
 cd agent-receipts
 python -m venv .venv
 # Windows: .venv\Scripts\activate    macOS/Linux: source .venv/bin/activate
@@ -176,6 +176,19 @@ Render dashboard → **New → Blueprint** → this repo, then fill in the secre
 **Free plan caveats:** services spin down after about 15 minutes idle, so the first request takes about a minute; and the ledger is not persistent, so receipts created on the hosted demo reset on every restart, spin-down or redeploy. The staged receipts in `backend/scenarios/staged/` reload at startup, so the pre-staged dispute is always there.
 
 The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_FILE=false`), and `/shop`, scenario runs and dispute resolve are rate-limited (`RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_PER_DAY`).
+
+## Design decisions
+
+- **Log first, then pay.** The agent cannot create a PayPal order without a receipt ID. The intent exists before any money moves, so it can't be written to fit the outcome.
+- **Append, never edit.** PayPal order IDs, disputes, verdicts and filings are added as linked events. A hashed record is never changed, and database triggers refuse updates and deletes.
+- **Anchor outside our database.** A hash chain alone can be rebuilt by anyone who controls the database. The receipt hash goes into the PayPal order as `invoice_id`, so PayPal holds a copy we can't rewrite. The adjudicator reads it back from the captured payment named in the dispute.
+- **Judge against a snapshot.** The receipt stores the listing the agent chose (name, price, description, attributes), so a later catalog change can't rewrite what the agent saw. Receipts logged before snapshots existed fall back to the catalog, and the verdict card says so.
+- **Facts first, model second.** Code works out the integrity result, the field-by-field diff and any injected listing text. Those facts limit the possible verdicts. Claude only chooses among them, cites a rule and explains.
+- **Injection must be shown to matter.** A listing that tries to instruct the agent only shifts fault to the merchant if the agent actually saw that listing and the violated field is the one the text told it to override. Otherwise the case goes to a person.
+- **Fail closed.** If a real dispute's receipt can't be checked against PayPal (no capture ID, failed lookup), there is no model call and the case goes to manual review. Only an order that exists but predates anchoring counts as "unanchored".
+- **Safe to repeat.** Filing calls use a `PayPal-Request-Id` derived from the dispute and action, webhook events are handled once per event ID, and each dispute is resolved by one caller at a time.
+- **Filing is opt-in.** Nothing is sent to PayPal unless `FILING_ENABLED=true`. The hosted demo keeps it off.
+- **Keep it small.** Keyword (BM25) retrieval over 20 rules instead of an embedding model, SQLite instead of a database server, and plain Anthropic tool-use loops instead of an agent framework.
 
 ## Limitations
 
