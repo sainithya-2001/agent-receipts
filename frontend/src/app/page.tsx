@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/api/client";
@@ -69,7 +70,8 @@ export default function QueuePage() {
       <div className="section-title">
         <h2>Break the agent</h2>
         <span className="muted" style={{ fontSize: 13 }}>
-          Each run buys the item for real (PayPal sandbox, vaulted, receipt hash anchored). Only the dispute is simulated, and it is never filed.
+          Scripted agent decisions with real PayPal orders: controlled tests of the accountability layer. The live agent is on{" "}
+          <Link href="/task">&lsquo;Give your agent a task&rsquo;</Link>.
         </span>
       </div>
       <div className="seed-strip">
