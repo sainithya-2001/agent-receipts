@@ -230,3 +230,5 @@ __marimo__/
 # SQLite WAL/shm side files of the local ledger
 *.db-shm
 *.db-wal
+*.sqlite*
+ui*.db
