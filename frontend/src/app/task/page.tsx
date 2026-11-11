@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/api/client";
+import { ApiError, api } from "@/api/client";
 import { authorizationText, canAuthorize } from "@/api/authorize";
 import { money } from "@/api/format";
 import type { ShopJob, ShopJobEvent, StoredMandate } from "@/api/types";
@@ -51,17 +51,18 @@ export default function TaskPage() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState<DemoLimitDetail | null>(null);
+  const [stale, setStale] = useState(false); // the mandate expired or was already used
   const jobId = useRef<string | null>(null);
 
   const ok = canAuthorize(confirmed);
   const busy = starting || job?.status === "running";
 
-  const edit = (next: string) => { setText(next); setParsed(null); setError(null); setLimit(null); };
+  const edit = (next: string) => { setText(next); setParsed(null); setStale(false); setError(null); setLimit(null); };
 
   // Claude reads the request into constraints. Those exact constraints are what the buyer confirms,
   // what the server stores under a mandate_id, and what the receipt records once the buyer confirms.
   async function readRequest(request = text) {
-    setError(null); setLimit(null); setParsed(null); setReading(true);
+    setError(null); setLimit(null); setStale(false); setParsed(null); setReading(true);
     try {
       setParsed(await api.parseMandate(request.trim()));
     } catch (e) {
@@ -114,7 +115,9 @@ export default function TaskPage() {
       setJob({ job_id, status: "running", events: [], result: null, error: null });
     } catch (e) {
       const d = demoLimitOf(e);
-      if (d) setLimit(d); else setError(e instanceof Error ? e.message : String(e));
+      if (e instanceof ApiError && [404, 409, 422].includes(e.status)) {
+        setParsed(null); setStale(true); // back to the read step
+      } else if (d) setLimit(d); else setError(e instanceof Error ? e.message : String(e));
     } finally {
       setStarting(false);
     }
@@ -180,6 +183,11 @@ export default function TaskPage() {
           )}
         </div>
 
+        {stale && (
+          <div className="note-box" role="status">
+            This authorization expired or was already used. Read your request again.
+          </div>
+        )}
         {limit && <DemoLimitNotice detail={limit} />}
         {error && <div className="error-box">{error}</div>}
       </section>
