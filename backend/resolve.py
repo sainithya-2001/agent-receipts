@@ -41,6 +41,25 @@ def _events(receipt: dict[str, Any], kind: str, dispute_id: str) -> list[dict[st
     return [e for e in receipt["events"] if e["kind"] == kind and e.get("dispute_id") == dispute_id]
 
 
+def _record_outcome(receipt: dict[str, Any], dispute: dict[str, Any]) -> None:
+    """Once PayPal reports the dispute RESOLVED, append one read-only paypal_outcome event (what PayPal
+    decided, the refund, when). Nothing is sent to PayPal; it is recorded once per dispute."""
+    if dispute.get("simulated") or dispute.get("status") != "RESOLVED":
+        return
+    dispute_id = dispute["dispute_id"]
+    if _events(receipt, "paypal_outcome", dispute_id):
+        return
+    outcome = dispute.get("dispute_outcome") or {}
+    refunds = (dispute.get("refund_details") or {}).get("transactions") or []
+    ledger.append_event(receipt["receipt_id"], "paypal_outcome", {
+        "dispute_id": dispute_id, "outcome_code": outcome.get("outcome_code"),
+        "outcome_reason": outcome.get("outcome_reason"), "amount_refunded": outcome.get("amount_refunded"),
+        "refund_id": refunds[0].get("id") if refunds else None, "resolved_at": dispute.get("update_time"),
+        # the complaint as the dispute showed it, since PayPal keeps it in the item notes
+        "item_notes": adjudicator.item_notes(dispute, descriptions=False),
+    })
+
+
 def _anchor(receipt_id: str, txn: dict[str, Any], paypal: PayPalClient | None, *,
             simulated: bool) -> dict[str, Any] | None:
     """The PayPal anchor check for a dispute. Fails closed for real disputes: with no capture id,
@@ -100,9 +119,12 @@ def _resolve(dispute: dict[str, Any], *, paypal: PayPalClient | None = None, fil
             "dispute_id": dispute_id, "reason": dispute.get("reason"), "status": dispute.get("status"),
             "stage": dispute.get("dispute_life_cycle_stage"), "amount": dispute.get("dispute_amount"),
             "buyer_messages": adjudicator.buyer_messages(dispute),
-            "item_notes": adjudicator.item_notes(dispute), "simulated": bool(dispute.get("simulated")),
+            "item_notes": adjudicator.item_notes(dispute, descriptions=False),
+            "simulated": bool(dispute.get("simulated")),
         })
 
+    _record_outcome(receipt, dispute)
+    receipt = ledger.get_receipt(receipt_id)  # includes anything just recorded
     recorded = _events(receipt, "dispute_verdict", dispute_id)
     # A verdict is decided once, except one that only failed because PayPal couldn't be reached:
     # that is re-checked on the next run instead of being stuck in manual review.

@@ -27,7 +27,7 @@ export type FrameBody =
   | { type: "listing"; product: Product | null }
   | { type: "choice"; step: AgentStep; receipt: Receipt; product: Product | null }
   | { type: "signed"; receipt: Receipt }
-  | { type: "event"; event: LedgerEvent; verdict?: Verdict };
+  | { type: "event"; event: LedgerEvent; verdict?: Verdict; receipt: Receipt };
 
 export const verdictEvents = (receipt: Receipt) =>
   receipt.events.filter((e) => e.kind === "dispute_verdict").map((e) => e.verdict as Verdict);
@@ -54,6 +54,7 @@ const EVENT_TITLES: Record<string, string> = {
   dispute_opened: "Buyer opened a dispute",
   dispute_verdict: "Adjudicator verdict",
   dispute_response: "Response filed with PayPal",
+  paypal_outcome: "Resolved by PayPal",
 };
 
 const PHASE_OF = (kind: string): Phase =>
@@ -121,7 +122,7 @@ export function buildTimeline(receipt: Receipt, catalog: Product[], disputeId?: 
     if (disputeId && dispute && dispute !== disputeId) continue;
     const frame: Frame = {
       key: `ev-${event.seq}`, phase: PHASE_OF(event.kind), stamp: "", at: event.at,
-      title: EVENT_TITLES[event.kind] ?? event.kind, tone: "plain", notes: [], body: { type: "event", event },
+      title: EVENT_TITLES[event.kind] ?? event.kind, tone: "plain", notes: [], body: { type: "event", event, receipt },
     };
     if (event.kind === "dispute_opened" && verdict?.fault_class === "MERCHANT_ERROR" && !verdict.violations.length) {
       frame.tone = "deviation";
@@ -129,14 +130,14 @@ export function buildTimeline(receipt: Receipt, catalog: Product[], disputeId?: 
     }
     if (event.kind === "dispute_verdict") {
       const v = event.verdict as Verdict;
-      frame.body = { type: "event", event, verdict: v };
+      frame.body = { type: "event", event, verdict: v, receipt };
       frame.tone = v.status !== "decided" ? "warning" : v.fault_class === "BUYER_REMORSE" ? "good" : "plain";
       if (receipt.events.some((x) => x.kind === "dispute_verdict" && x.supersedes === event.seq)) {
         frame.tone = "system"; // replaced by a later verdict; kept for the record
         frame.title = "Adjudicator verdict (superseded)";
       }
     }
-    if (event.kind === "dispute_response") frame.tone = "good";
+    if (event.kind === "dispute_response" || event.kind === "paypal_outcome") frame.tone = "good";
     if (event.kind === "ledger_import") frame.tone = "system";
     frames.push(frame);
   }

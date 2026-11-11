@@ -86,3 +86,35 @@ def test_queue_shows_the_latest_verdict():
     resolve.rejudge(qhv_dispute(), "notes", client=fake_claude("MERCHANT_ERROR", "AL-4"))
     row = next(r for r in resolve.queue()["items"] if r["dispute_id"] == "PP-R-QHV-10199556")
     assert row["verdict"]["fault_class"] == "MERCHANT_ERROR" and row["verdict"]["cited_rule"] == "AL-4"
+
+
+# --- paypal_outcome: read-only record of what PayPal decided ---
+
+def resolved(d):
+    return {**d, "status": "RESOLVED", "update_time": "2026-11-11T20:16:30.000Z",
+            "dispute_outcome": {"outcome_code": "RESOLVED_BUYER_FAVOUR", "outcome_reason": "SELLER_ISSUED_REFUND",
+                                "amount_refunded": {"currency_code": "USD", "value": "109.99"}},
+            "refund_details": {"transactions": [{"id": "0KB87031KB858403M"}]}}
+
+
+def outcomes():
+    return [e for e in ledger.get_receipt(STAGED)["events"] if e["kind"] == "paypal_outcome"]
+
+
+def test_resolved_dispute_records_one_paypal_outcome_event():
+    resolve.resolve(qhv_dispute(), client=fake_claude("MERCHANT_ERROR", "AL-4"))
+    assert outcomes() == []  # not resolved yet: nothing recorded
+    resolve.resolve(resolved(qhv_dispute()), client=fake_claude())
+    resolve.resolve(resolved(qhv_dispute()), client=fake_claude())  # again: still one
+    (event,) = outcomes()
+    assert event["dispute_id"] == "PP-R-QHV-10199556" and event["outcome_code"] == "RESOLVED_BUYER_FAVOUR"
+    assert event["outcome_reason"] == "SELLER_ISSUED_REFUND" and event["refund_id"] == "0KB87031KB858403M"
+    assert event["amount_refunded"] == {"currency_code": "USD", "value": "109.99"}
+    assert event["resolved_at"] == "2026-11-11T20:16:30.000Z"
+    assert event["item_notes"] == [NOTES]  # the notes only, not the listing description
+    assert ledger.verify_chain()["ok"] is True
+
+
+def test_simulated_disputes_never_get_an_outcome():
+    resolve.resolve({**resolved(qhv_dispute()), "simulated": True}, client=fake_claude("MERCHANT_ERROR", "AL-4"))
+    assert outcomes() == []

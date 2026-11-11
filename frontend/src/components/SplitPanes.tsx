@@ -6,6 +6,7 @@ import { buyerReason } from "@/api/explain";
 import { humanize, money, reasonLabel, when } from "@/api/format";
 import type { LedgerEvent, NextStep, Product, Receipt, Verdict } from "@/api/types";
 import { VerdictCard } from "./VerdictCard";
+import { complaintOf } from "@/api/complaint";
 import { DemoLimitNotice, demoLimitOf, type DemoLimitDetail } from "./DemoLimit";
 
 interface Props {
@@ -55,7 +56,12 @@ function BuyerPane({ receipt, product, opened, verdict }: Props) {
       {opened && (
         <div className="block">
           <span className="eyebrow">My complaint · {reasonLabel(opened.reason)}</span>
-          {(opened.buyer_messages ?? []).map((m: string, i: number) => <p key={i} className="quote small">{m}</p>)}
+          {complaintOf(receipt, opened.dispute_id, opened.buyer_messages).map((c, i) => (
+            <div key={i}>
+              <p className="quote small">{c.text}</p>
+              {c.thread.length > 0 && <p className="muted" style={{ fontSize: 12, margin: "2px 0 0" }}>Thread message: {c.thread.map((t) => `“${t}”`).join(", ")}</p>}
+            </div>
+          ))}
         </div>
       )}
 

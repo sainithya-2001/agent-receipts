@@ -42,4 +42,4 @@ def test_buyer_box_and_readme_do_not_overclaim():
     assert "Your verified receipt" in explain and "shows" in explain
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert not re.search(r"\bprov(es|e|en)\b", readme, re.I)
-    assert "not a signature by the buyer" in readme
+    assert "isn't a buyer signature" in readme

@@ -4,7 +4,8 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { anchorState } from "@/api/anchor";
 import { money, reasonLabel, shortHash, when, humanize } from "@/api/format";
 import type { Frame } from "@/api/timeline";
-import type { Constraints as ConstraintsT, LedgerEvent, Product, Verdict } from "@/api/types";
+import type { Constraints as ConstraintsT, LedgerEvent, Product, Receipt, Verdict } from "@/api/types";
+import { complaintOf } from "@/api/complaint";
 import { AnchorCtx } from "./AnchorContext";
 import { FaultTag } from "./FaultTag";
 
@@ -162,7 +163,7 @@ function FrameBody({ frame }: { frame: Frame }) {
         </div>
       );
     case "event":
-      return <EventBody event={b.event} verdict={b.verdict} />;
+      return <EventBody event={b.event} verdict={b.verdict} receipt={b.receipt} />;
   }
 }
 
@@ -195,7 +196,7 @@ function Listing({ product }: { product: Product }) {
   );
 }
 
-function EventBody({ event, verdict }: { event: LedgerEvent; verdict?: Verdict }) {
+function EventBody({ event, verdict, receipt }: { event: LedgerEvent; verdict?: Verdict; receipt: Receipt }) {
   const e = event as LedgerEvent & Record<string, any>;
   const { anchor, failed } = useContext(AnchorCtx);
   const tail = <div className="hash-line" style={{ marginTop: 6 }}><span>chain #{e.seq}</span><span>{shortHash(e.hash, 16)}</span></div>;
@@ -232,8 +233,11 @@ function EventBody({ event, verdict }: { event: LedgerEvent; verdict?: Verdict }
             <span className="mono">{e.dispute_id}</span> · {reasonLabel(e.reason)} · {money(e.amount?.value, e.amount?.currency_code)}
             {e.simulated ? <span className="tag none" style={{ marginLeft: 8 }}>simulated</span> : null}
           </div>
-          {(e.buyer_messages ?? []).map((m: string, i: number) => (
-            <div key={i} className="serif" style={{ fontSize: 15, fontStyle: "italic", marginTop: 6 }}>“{m}”</div>
+          {complaintOf(receipt, e.dispute_id, e.buyer_messages).map((c, i) => (
+            <div key={i} style={{ marginTop: 6 }}>
+              <div className="serif" style={{ fontSize: 15, fontStyle: "italic" }}>“{c.text}”</div>
+              {c.thread.length > 0 && <div className="muted" style={{ fontSize: 12.5 }}>Thread message: {c.thread.map((t) => `“${t}”`).join(", ")}</div>}
+            </div>
           ))}
           {tail}
         </>
@@ -256,6 +260,19 @@ function EventBody({ event, verdict }: { event: LedgerEvent; verdict?: Verdict }
           {tail}
         </>
       ) : tail;
+    case "paypal_outcome": {
+      const code = String(e.outcome_code ?? "").replace(/^RESOLVED_/, "").replace(/_/g, " ").toLowerCase();
+      return (
+        <>
+          <div><b>{code || "resolved"}</b>{e.outcome_reason ? ` · ${String(e.outcome_reason).replace(/_/g, " ").toLowerCase()}` : ""}</div>
+          {e.amount_refunded && <div>Refunded <span className="mono">{money(e.amount_refunded.value, e.amount_refunded.currency_code)}</span> to the buyer</div>}
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            Read from PayPal{e.refund_id ? <> · refund <span className="mono">{e.refund_id}</span></> : null}{e.resolved_at ? ` · ${e.resolved_at}` : ""}
+          </div>
+          {tail}
+        </>
+      );
+    }
     case "dispute_response":
       return <><div>Filed <span className="mono">{e.action}</span> with PayPal</div>{tail}</>;
     case "ledger_import":

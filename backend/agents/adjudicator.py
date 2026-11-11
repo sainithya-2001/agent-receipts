@@ -132,13 +132,13 @@ def buyer_messages(dispute: dict[str, Any]) -> list[str]:
     return [m["content"] for m in dispute.get("messages") or [] if m.get("posted_by") == "BUYER" and m.get("content")]
 
 
-def item_notes(dispute: dict[str, Any]) -> list[str]:
+def item_notes(dispute: dict[str, Any], descriptions: bool = True) -> list[str]:
     """The notes and descriptions on the disputed items. PayPal's buyer form stores the complaint
     here, so a dispute can have a thread message of just "no" and the real account in notes."""
     found: list[str] = []
     for txn in dispute.get("disputed_transactions") or []:
         for item in txn.get("items") or []:
-            for key in ("notes", "item_description"):
+            for key in (("notes", "item_description") if descriptions else ("notes",)):
                 text = item.get(key)
                 if text and text not in found:
                     found.append(text)
