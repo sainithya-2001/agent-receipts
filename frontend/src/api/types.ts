@@ -36,7 +36,7 @@ export interface LedgerEvent {
 export interface Receipt {
   receipt_id: string;
   created_at: string;
-  mandate: { request_text: string; constraints: Constraints };
+  mandate: { request_text: string; constraints: Constraints; confirmed_by_buyer_at?: string };
   agent_run: {
     model: string;
     options_considered: OptionConsidered[];

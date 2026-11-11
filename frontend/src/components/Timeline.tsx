@@ -98,6 +98,11 @@ function FrameBody({ frame }: { frame: Frame }) {
             “{b.receipt.mandate.request_text}”
           </div>
           <Constraints c={c} />
+          {b.receipt.mandate.confirmed_by_buyer_at && (
+            <div className="eyebrow" style={{ marginTop: 8 }}>
+              Confirmed by buyer · {when(b.receipt.mandate.confirmed_by_buyer_at)}
+            </div>
+          )}
         </>
       );
     }
