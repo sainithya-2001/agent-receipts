@@ -1,4 +1,4 @@
-// Builds the replay timeline from a receipt: the buyer's mandate, each agent step, the signed
+// Builds the replay timeline from a receipt: the buyer's mandate, each agent step, the hash-anchored
 // receipt, then the ledger events (PayPal and dispute) in chain order.
 //
 // The deviating step is marked red. Seeded scenarios name it (steps[].deviation); for real
@@ -107,7 +107,7 @@ export function buildTimeline(receipt: Receipt, catalog: Product[], disputeId?: 
   // A receipt that fails its integrity check is the deviation: what it says can't be trusted.
   const altered = verdict?.integrity.status === "failed";
   frames.push({
-    key: "signed", phase: "Ledger", stamp: "", at: receipt.created_at, title: "Receipt of intent signed",
+    key: "signed", phase: "Ledger", stamp: "", at: receipt.created_at, title: "Receipt of intent logged (hash-anchored)",
     tone: altered ? "deviation" : "plain", notes: [], body: { type: "signed", receipt },
     flag: altered
       ? `${verdict!.integrity.check === "chain" ? "Ledger chain broken" : "Altered after purchase"}: ${verdict!.integrity.note}`

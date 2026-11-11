@@ -12,7 +12,7 @@ const serif = Newsreader({ subsets: ["latin"], style: ["normal", "italic"], vari
 
 export const metadata: Metadata = {
   title: "Proof of Intent",
-  description: "The dispute layer for AI purchases on PayPal: receipts of intent, replayed when a purchase is disputed.",
+  description: "The dispute layer for AI purchases on PayPal: tamper-evident receipts of intent, replayed when a purchase is disputed.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

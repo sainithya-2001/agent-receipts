@@ -53,7 +53,7 @@ export default function QueuePage() {
         </div>
         <div className="spacer" />
         <p className="muted" style={{ maxWidth: 440, margin: 0, fontSize: 14 }}>
-          Every purchase here was made by an AI agent that signed a receipt of intent before it paid.
+          Every purchase here was made by an AI agent that logged a hash-anchored receipt of intent before it paid.
           Open a dispute to replay what the agent was asked to do and what it actually did.
         </p>
       </div>

@@ -48,7 +48,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
           <div className="crumbs"><Link href="/">Dispute queue</Link> / {disputeId ?? "no dispute"}</div>
           <h1 className="mono" style={{ fontSize: 28 }}>{receipt.receipt_id}</h1>
           <div className="eyebrow" style={{ marginTop: 4 }}>
-            signed {when(receipt.created_at)} · hash {shortHash(receipt.hash, 16)}
+            logged {when(receipt.created_at)} · hash {shortHash(receipt.hash, 16)}
           </div>
         </div>
       </div>

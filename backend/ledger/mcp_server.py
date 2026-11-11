@@ -37,7 +37,7 @@ def log_intent(
     decision_summary: str = Field(description="One or two sentences: why this product fits the request."),
     model: str = Field(description="The model that made the decision."),
 ) -> dict[str, Any]:
-    """Log a signed receipt of intent before buying. Returns the receipt_id and its hash."""
+    """Log a hash-anchored, tamper-evident receipt of intent before buying. Returns the receipt_id and its hash."""
     receipt_id = ledger.log_intent(
         {"request_text": request_text, "constraints": constraints.model_dump()},
         {
