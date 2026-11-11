@@ -28,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </Link>
             <nav className="nav">
               <Link href="/">Dispute queue</Link>
+              <Link href="/task">Give your agent a task</Link>
               <ChainPill />
             </nav>
           </div>

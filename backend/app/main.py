@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-from backend import checkout, ledger, resolve, scenarios, shop
+from backend import checkout, jobs, ledger, resolve, scenarios, shop
 from backend.catalog import load_products
 from backend.agents.adjudicator import AdjudicationError, listing_injection
 from backend.agents.evidence import EvidenceError
@@ -50,6 +50,7 @@ def health(deep: bool = False) -> dict:
 
 class ShopRequest(BaseModel):
     request_text: str
+    background: bool = False  # true: start the run, answer at once with a job_id to poll
 
 
 def _paypal_error(exc: PayPalError) -> HTTPException:
@@ -59,12 +60,37 @@ def _paypal_error(exc: PayPalError) -> HTTPException:
 @app.post("/shop", dependencies=[Depends(demo_limit)])
 def shop_route(req: ShopRequest) -> dict:
     """Run the shopping agent, log its intent, and create the PayPal order to approve."""
+    if req.background:
+        try:
+            paypal = PayPalClient()
+        except ValueError as exc:
+            raise HTTPException(503, str(exc))
+        return {"job_id": jobs.start(lambda progress: shop.buy(req.request_text, paypal, progress=progress),
+                                     _describe_shop_error)}
     try:
         return shop.buy(req.request_text, PayPalClient())
     except (ShoppingError, RefusalError, ledger.InvalidReceipt) as exc:
         raise HTTPException(422, str(exc))
     except PayPalError as exc:
         raise _paypal_error(exc)
+
+
+def _describe_shop_error(exc: Exception) -> str:
+    if isinstance(exc, PayPalError):
+        return f"PayPal rejected the order ({exc.status}, debug id {exc.debug_id})."
+    if isinstance(exc, (ShoppingError, RefusalError, ledger.InvalidReceipt)):
+        return str(exc)
+    logging.getLogger(__name__).exception("shop run failed")
+    return "The run failed unexpectedly; try again."
+
+
+@app.get("/shop/jobs/{job_id}")
+def shop_job(job_id: str) -> dict:
+    """Progress of a background /shop run: status, events so far, and the result when done."""
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(404, "no such run (runs are kept in memory and reset on restart)")
+    return job
 
 
 @app.get("/paypal/return")

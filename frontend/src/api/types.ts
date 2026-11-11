@@ -63,6 +63,24 @@ export interface PayPalAnchor {
   error: string | null;
 }
 
+export interface ShopJobEvent {
+  at: number;
+  kind: "step" | "logged" | "ordering" | "ordered";
+  step?: { tool: string; input?: Record<string, unknown>; result_ids?: string[]; error?: string };
+  receipt_id?: string;
+  constraints?: Constraints;
+  chosen_product_id?: string | null;
+  checkout?: { status?: string; order_id?: string; approve_url?: string; capture_id?: string };
+}
+
+export interface ShopJob {
+  job_id: string;
+  status: "running" | "done" | "error";
+  events: ShopJobEvent[];
+  result: { receipt_id: string; checkout?: { status?: string; approve_url?: string } } | null;
+  error: string | null;
+}
+
 export interface DiffRow {
   field: string;
   asked: string | null;

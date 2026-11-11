@@ -389,3 +389,27 @@ table.options .bad { color: var(--red); }
 .note-box.override { border-color: var(--red); background: var(--red-wash); color: var(--ink); }
 .vsec .note-box { margin-bottom: 14px; }
 .vsec .block:first-child { margin-top: 0; }
+
+/* ---- task page ---- */
+.task { max-width: 760px; display: flex; flex-direction: column; gap: 10px; }
+.task-text { font-family: var(--serif); font-size: 22px; font-style: italic; padding: 12px 14px; border: 1px solid var(--ink); background: var(--card); resize: vertical; color: var(--ink); }
+.task-examples { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-btn { font-family: var(--mono); font-size: 12px; padding: 3px 10px; border: 1px solid var(--rule-strong); background: var(--card); cursor: pointer; }
+.chip-btn:hover:not(:disabled) { border-color: var(--ink); }
+.chip-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.authorization { margin-top: 10px; border: 1px solid var(--ink); border-left: 8px solid var(--green); background: var(--card); padding: 16px 20px 18px; }
+.authorization.incomplete { border-left-color: var(--amber); }
+.auth-text { font-family: var(--serif); font-size: 24px; line-height: 1.25; margin: 6px 0 12px; }
+.auth-parts { list-style: none; margin: 0; padding: 0; display: flex; gap: 28px; flex-wrap: wrap; }
+.auth-parts li span { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.auth-parts li b { font-family: var(--mono); font-size: 15px; font-weight: 600; }
+.progress { max-width: 760px; margin-top: 28px; }
+.progress ol { list-style: none; margin: 0; padding: 0 0 0 4px; border-left: 2px solid var(--rule-strong); margin-left: 6px; }
+.progress li { position: relative; padding: 5px 0 5px 22px; font-size: 15px; }
+.progress li .dot { position: absolute; left: -7px; top: 11px; width: 10px; height: 10px; background: var(--card); border: 2px solid var(--ink); }
+.progress li.done .dot { background: var(--ink); }
+.progress li.active .dot { border-color: var(--orange); animation: pulse 1s infinite; }
+.progress li.bad { color: var(--red); }
+.progress li.bad .dot { background: var(--red); border-color: var(--red); }
+.progress li .detail { font-size: 13px; }
+@keyframes pulse { 50% { opacity: 0.25; } }

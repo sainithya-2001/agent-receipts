@@ -6,6 +6,7 @@ Each tool call is recorded in agent_run["steps"] for the replay timeline.
 """
 import json
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import anthropic
@@ -148,7 +149,8 @@ def _check_choice(args: dict[str, Any]) -> None:
         raise ValueError(f"{pid} is not sold in size {size!r}; sizes: {product['sizes']}")
 
 
-def run(request_text: str, client: anthropic.Anthropic | None = None) -> dict[str, Any]:
+def run(request_text: str, client: anthropic.Anthropic | None = None,
+        on_step: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     """Run the agent on a request. Returns {"mandate": ..., "agent_run": ...} per the receipt schema."""
     client = client or anthropic.Anthropic()
     messages: list[dict[str, Any]] = [{"role": "user", "content": request_text}]
@@ -188,6 +190,8 @@ def run(request_text: str, client: anthropic.Anthropic | None = None) -> dict[st
                     {"type": "tool_result", "tool_use_id": block.id, "content": str(exc), "is_error": True}
                 )
             steps.append(step)
+            if on_step:
+                on_step(step)
 
         if choice is not None:
             return _build_result(request_text, choice, steps)

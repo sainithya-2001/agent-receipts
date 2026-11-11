@@ -1,4 +1,4 @@
-import type { PayPalAnchor, ChainStatus, Product, QueueRow, Receipt, ResolveResult, Scenario } from "./types";
+import type { PayPalAnchor, ShopJob, ChainStatus, Product, QueueRow, Receipt, ResolveResult, Scenario } from "./types";
 
 export class ApiError extends Error {
   constructor(public status: number, public detail: unknown) {
@@ -18,6 +18,12 @@ export const api = {
   receipt: (id: string) => call<Receipt>(`/receipts/${encodeURIComponent(id)}`),
   anchor: (id: string, captureId?: string | null) =>
     call<PayPalAnchor>(`/receipts/${encodeURIComponent(id)}/paypal-anchor${captureId ? `?capture_id=${encodeURIComponent(captureId)}` : ""}`),
+  startShop: (requestText: string) =>
+    call<{ job_id: string }>("/shop", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request_text: requestText, background: true }),
+    }),
+  shopJob: (jobId: string) => call<ShopJob>(`/shop/jobs/${encodeURIComponent(jobId)}`),
   catalog: () => call<Product[]>("/catalog"),
   chain: () => call<ChainStatus>("/ledger/verify"),
   scenarios: () => call<Scenario[]>("/scenarios"),
