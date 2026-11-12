@@ -17,7 +17,7 @@ The lifecycle is **prevent → record → resolve**: a guard stops a purchase th
 
 ## About this project
 
-I designed and built Proof of Intent myself. I designed the architecture and the trust model: PayPal as an independent integrity witness (the receipt hash travels as the order's `invoice_id`), adjudication that works out the facts in code before any AI is involved and fails closed when integrity can't be checked, buyer-confirmed mandates, and the pre-payment guard. I integrated PayPal Orders, Vault, Captures, Disputes and Webhooks, and built the ledger, the adjudication pipeline, the MCP server and the merchant console.
+I built Proof of Intent myself. I designed the architecture and the trust model: PayPal as an independent integrity witness (the receipt hash travels as the order's `invoice_id`), adjudication that works out the facts in code before any AI is involved and fails closed when integrity can't be checked, buyer-confirmed mandates, and the pre-payment guard. I integrated PayPal Orders, Vault, Captures, Disputes and Webhooks, and built the ledger, the adjudication pipeline, the MCP server and the merchant console.
 
 I validated it with automated tests, three external technical reviews whose findings I triaged and fixed, and live sandbox runs, including a real dispute that PayPal refunded.
 
