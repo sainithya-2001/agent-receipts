@@ -64,7 +64,7 @@ export default function QueuePage() {
         <div className="agent"><span className="eyebrow">Agent error</span><div className="n">{count(fault("AGENT_ERROR"))}</div></div>
         <div className="merchant"><span className="eyebrow">Merchant error</span><div className="n">{count(fault("MERCHANT_ERROR"))}</div></div>
         <div className="remorse"><span className="eyebrow">Buyer remorse</span><div className="n">{count(fault("BUYER_REMORSE"))}</div></div>
-        <div><span className="eyebrow">Awaiting verdict</span><div className="n">{count((r) => !r.verdict || r.verdict.status !== "decided")}</div></div>
+        <div><span className="eyebrow">Awaiting verdict</span><div className="n">{count((r) => !r.verdict)}</div></div>
       </div>
 
       <div className="section-title">
