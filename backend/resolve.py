@@ -158,6 +158,9 @@ def _resolve(dispute: dict[str, Any], *, paypal: PayPalClient | None = None, fil
     step = evidence.plan(dispute, verdict, done)
     result: dict[str, Any] = {"dispute_id": dispute_id, "receipt_id": receipt_id, "status": "adjudicated",
                               "verdict": verdict, "next": step, "filed": None,
+                              # Steps PayPal shows as taken that the ledger has no record of (e.g. a
+                              # crash after the PayPal call): reported, never re-filed.
+                              "observed_on_paypal": sorted(evidence.observed_done(dispute) - done),
                               "filing_enabled": get_settings().filing_enabled}
     if not (file and step["action"]):
         return result

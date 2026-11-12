@@ -16,7 +16,7 @@ from backend.agents.llm import RefusalError
 from backend.agents.shopping import NoProductPicked, ShoppingError
 from backend.config import get_settings
 from backend.ledger import LedgerError
-from backend.paypal import webhooks
+from backend.paypal import orders, webhooks
 from backend.paypal.client import PayPalClient, PayPalError, UnsafePayPalPath
 from backend.ratelimit import demo_limit, demo_limit_parse
 
@@ -193,16 +193,43 @@ def paypal_return(token: PayPalId) -> dict:
         raise _paypal_error(exc)
 
 
+# PayPal has no "cancelled" order state: a buyer who cancels just leaves an order that was never
+# approved. These are the states that mean "not approved"; anything else (APPROVED, COMPLETED,
+# SAVED) means PayPal does not agree the buyer walked away.
+_NOT_APPROVED = {"CREATED", "PAYER_ACTION_REQUIRED", "VOIDED"}
+
+
 @app.get("/paypal/cancel")
 def paypal_cancel(token: PayPalId) -> dict:
+    """PayPal sends the buyer here on cancel; token is the order id.
+
+    Anyone can open this URL, so the request alone proves nothing. A cancellation is recorded only
+    after PayPal confirms the order belongs to this receipt and was never approved, and only once.
+    Otherwise nothing is written and the response says why."""
     receipt_id = ledger.find_by_order(token)
-    if receipt_id:
-        kinds = {e["kind"] for e in ledger.get_receipt(receipt_id)["events"] if e.get("order_id") == token}
-        # Anyone can open this URL, so it can't rewrite the history of an order that was already
-        # captured, and a repeat doesn't add a second event.
-        if not kinds & {"paypal_captured", "paypal_cancelled"}:
-            ledger.append_event(receipt_id, "paypal_cancelled", {"order_id": token})
-    return {"order_id": token, "status": "CANCELLED_BY_BUYER", "receipt_id": receipt_id}
+    result = {"order_id": token, "receipt_id": receipt_id, "recorded": False}
+    if not receipt_id:
+        return {**result, "status": "UNKNOWN_ORDER"}
+    kinds = {e["kind"] for e in ledger.get_receipt(receipt_id)["events"] if e.get("order_id") == token}
+    if "paypal_captured" in kinds:
+        return {**result, "status": "ALREADY_CAPTURED"}
+    if "paypal_cancelled" in kinds:
+        return {**result, "status": "ALREADY_RECORDED"}
+    try:
+        order = orders.get_order(PayPalClient(), token)
+    except PayPalError:
+        return {**result, "status": "UNVERIFIED", "why": "PayPal could not be reached to confirm; nothing recorded."}
+    status = order.get("status")
+    custom_id = ((order.get("purchase_units") or [{}])[0]).get("custom_id")
+    if custom_id != receipt_id:
+        return {**result, "status": "UNVERIFIED", "paypal_status": status,
+                "why": "PayPal's order does not carry this receipt id; nothing recorded."}
+    if status not in _NOT_APPROVED:
+        return {**result, "status": "NOT_CANCELLED", "paypal_status": status,
+                "why": f"PayPal shows the order as {status}; nothing recorded."}
+    ledger.append_event(receipt_id, "paypal_cancelled", {
+        "order_id": token, "paypal_status": status, "verified_with_paypal": True})
+    return {**result, "status": "CANCELLED_BY_BUYER", "paypal_status": status, "recorded": True}
 
 
 @app.get("/receipts/{receipt_id}")
