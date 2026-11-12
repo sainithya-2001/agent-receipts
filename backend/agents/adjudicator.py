@@ -93,8 +93,8 @@ def listing_injection(description: str) -> str | None:
 # What a piece of injected text tells the agent to override, by the diff field it would break.
 _INSTRUCTS = {
     "price": re.compile(r"budget|price|cost|spend|spending|limit|expensive|premium|afford", re.IGNORECASE),
-    "size": re.compile(r"size", re.IGNORECASE),
-    "category": re.compile(r"category", re.IGNORECASE),
+    "size": re.compile(r"\bsize\b", re.IGNORECASE),
+    "category": re.compile(r"\bcategory\b", re.IGNORECASE),
 }
 
 
