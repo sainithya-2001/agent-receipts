@@ -114,8 +114,11 @@ def shop_route(req: ShopRequest) -> dict:
                 progress(event)
 
         try:
-            return shop.buy(confirmed["request_text"], paypal, progress=track, constraints=confirmed["constraints"],
-                            confirmed_at=confirmed["confirmed_by_buyer_at"], guard=True)
+            result = shop.buy(confirmed["request_text"], paypal, progress=track, constraints=confirmed["constraints"],
+                              confirmed_at=confirmed["confirmed_by_buyer_at"], guard=True)
+            if isinstance(result, dict) and result.get("no_match"):
+                mandates.release(confirmed["mandate_id"], order_may_exist=False)  # nothing happened: adjust and retry
+            return result
         except Exception as exc:
             # Failed before any PayPal call could have been made (the agent, the ledger, or checkout's own
             # pre-checks): the buyer may retry with the same mandate. Once ordering began, an order may
@@ -128,16 +131,23 @@ def shop_route(req: ShopRequest) -> dict:
         return {"job_id": jobs.start(run, _describe_shop_error)}
     try:
         return run()
-    except (ShoppingError, RefusalError, ledger.InvalidReceipt, checkout.CheckoutError) as exc:
+    except RefusalError:
+        raise HTTPException(422, SHOP_REFUSED)
+    except (ShoppingError, ledger.InvalidReceipt, checkout.CheckoutError) as exc:
         raise HTTPException(422, str(exc))
     except PayPalError as exc:
         raise _paypal_error(exc)
 
 
+SHOP_REFUSED = "The agent couldn't complete this request. Nothing was charged; try again or adjust your limits."
+
+
 def _describe_shop_error(exc: Exception) -> str:
     if isinstance(exc, PayPalError):
         return f"PayPal rejected the order ({exc.status}, debug id {exc.debug_id})."
-    if isinstance(exc, (ShoppingError, RefusalError, ledger.InvalidReceipt)):
+    if isinstance(exc, RefusalError):
+        return SHOP_REFUSED
+    if isinstance(exc, (ShoppingError, ledger.InvalidReceipt)):
         return f"{exc} Nothing was charged; you can authorize again."
     if isinstance(exc, checkout.CheckoutError):
         return f"{exc}. Nothing was charged; you can authorize again."

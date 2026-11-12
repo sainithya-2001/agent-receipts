@@ -82,7 +82,8 @@ export interface GuardBlock {
 
 export interface ShopJobEvent {
   at: number;
-  kind: "step" | "logged" | "ordering" | "ordered" | "blocked";
+  kind: "step" | "logged" | "ordering" | "ordered" | "blocked" | "no_match";
+  message?: string;
   step?: { tool: string; input?: Record<string, unknown>; result_ids?: string[]; error?: string };
   receipt_id?: string;
   constraints?: Constraints;
@@ -94,7 +95,7 @@ export interface ShopJob {
   job_id: string;
   status: "running" | "done" | "error";
   events: ShopJobEvent[];
-  result: { receipt_id: string; checkout?: GuardBlock & { status?: string; approve_url?: string } } | null;
+  result: { receipt_id: string; no_match?: boolean; message?: string; checkout?: GuardBlock & { status?: string; approve_url?: string } } | null;
   error: string | null;
 }
 

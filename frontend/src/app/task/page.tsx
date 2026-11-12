@@ -36,6 +36,8 @@ function describe(e: ShopJobEvent): { text: string; detail?: string; bad?: boole
     }
     case "ordering":
       return { text: "Creating the PayPal order" };
+    case "no_match":
+      return { text: e.message ?? "No product matches your limits. Nothing was charged.", bad: true };
     case "blocked":
       return { text: "Blocked before payment: no PayPal order was created", bad: true, detail: blockedDetail(e.checkout) };
     case "ordered":
@@ -221,6 +223,11 @@ export default function TaskPage() {
             {job.status === "running" && <li className="active"><span className="dot" />Working…</li>}
           </ol>
           {job.status === "error" && <div className="error-box">{job.error}</div>}
+          {job.status === "done" && job.result?.no_match && (
+            <div className="note-box blocked-box">
+              <b>No purchase.</b> {job.result.message} Adjust your limits above and authorize again.
+            </div>
+          )}
           {job.status === "done" && receiptId && blocked && (
             <div className="note-box blocked-box">
               <b>Blocked before payment.</b> The agent&apos;s choice broke what you confirmed

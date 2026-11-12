@@ -173,3 +173,79 @@ def test_blocked_purchase_is_not_a_failure_and_keeps_the_mandate_used(monkeypatc
     client, mid, first = _post(monkeypatch, lambda *a, **kw: {"receipt_id": "r", "checkout": {"blocked": True}})
     assert first.status_code == 200
     assert client.post("/shop", json={"mandate_id": mid}).status_code == 409
+
+
+# --- nothing fits: decided in code, no model, no receipt, no PayPal ---
+
+def test_cheapest_size_8_running_shoe_message_comes_from_the_catalog():
+    from backend import guard
+    c = {"category": "running shoes", "size": "8", "max_price": 50.0, "currency": "USD"}
+    assert guard.matching_products(c) == []
+    assert guard.no_match_message(c) == ("No product matches your limits (cheapest size-8 running shoe is $64.99). "
+                                         "Nothing was charged.")
+    assert guard.matching_products({**c, "max_price": 120.0})
+    nothing = guard.no_match_message({"category": "unicycles", "size": "8", "max_price": 50.0, "currency": "USD"})
+    assert "nothing in that category" in nothing and nothing.endswith("Nothing was charged.")
+
+
+def test_no_match_skips_the_model_the_ledger_and_paypal(monkeypatch):
+    called = []
+    monkeypatch.setattr("backend.shop.shopping.run", lambda *a, **k: called.append("model"))
+    seen = []
+    with patch("backend.checkout.orders.create_order") as create:
+        out = shop.buy("shoes", None, progress=seen.append, guard=True,
+                       constraints={"category": "running shoes", "size": "8", "max_price": 50.0, "currency": "USD"})
+    create.assert_not_called()
+    assert called == [] and out["no_match"] is True and "$64.99" in out["message"]
+    assert seen == [{"kind": "no_match", "message": out["message"]}]
+    assert ledger.verify_chain()["records"] == 0  # no intent was logged
+
+
+def test_no_match_releases_the_mandate_so_the_buyer_can_adjust(monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend import mandates
+    from backend.app.main import app
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "id"); monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "s")
+    m = mandates.create("shoes", {"category": "running shoes", "size": "8", "max_price": 50.0, "currency": "USD"})
+    mandates.confirm(m["mandate_id"])
+    client = TestClient(app)
+    with patch("backend.shop.shopping.run") as model:
+        first = client.post("/shop", json={"mandate_id": m["mandate_id"]})
+        second = client.post("/shop", json={"mandate_id": m["mandate_id"]})
+    model.assert_not_called()
+    assert first.status_code == 200 and first.json()["no_match"] and second.status_code == 200  # not "already used"
+
+
+def test_prompt_no_longer_asks_the_model_to_explain_why_nothing_fits():
+    from backend.agents import shopping
+    assert "explain why" not in shopping.SYSTEM
+
+
+# --- refusals read well ---
+
+def test_refusal_message_is_readable_and_keeps_the_details():
+    from backend.agents.llm import RefusalError
+    err = RefusalError("RefusalStopDetails(category='reasoning_extraction')")
+    assert "RefusalStopDetails" not in str(err) and err.details.startswith("RefusalStopDetails")
+
+
+def test_task_page_gets_the_readable_refusal_message(monkeypatch):
+    import time
+    from fastapi.testclient import TestClient
+    from backend import mandates
+    from backend.agents.llm import RefusalError
+    from backend.app.main import SHOP_REFUSED, app
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "id"); monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "s")
+    m = mandates.create("shoes", {"category": "running shoes", "size": "8", "max_price": 120.0, "currency": "USD"})
+    mandates.confirm(m["mandate_id"])
+    client = TestClient(app)
+    with patch("backend.app.main.shop.buy", side_effect=RefusalError("RefusalStopDetails(...)")):
+        job_id = client.post("/shop", json={"mandate_id": m["mandate_id"], "background": True}).json()["job_id"]
+        for _ in range(100):
+            job = client.get(f"/shop/jobs/{job_id}").json()
+            if job["status"] != "running":
+                break
+            time.sleep(0.02)
+        sync = client.post("/shop", json={"mandate_id": m["mandate_id"]})  # released after the failure: retryable
+    assert job["status"] == "error" and job["error"] == SHOP_REFUSED and "RefusalStopDetails" not in job["error"]
+    assert sync.status_code == 422 and sync.json()["detail"] == SHOP_REFUSED

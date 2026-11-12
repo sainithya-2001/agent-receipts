@@ -4,7 +4,7 @@ from typing import Any
 
 import anthropic
 
-from backend import checkout, ledger
+from backend import checkout, guard as purchase_guard, ledger
 from backend.agents import shopping
 from backend.paypal.client import PayPalClient
 
@@ -23,6 +23,12 @@ def buy(request_text: str, paypal: PayPalClient, client: anthropic.Anthropic | N
     guard=True (the public /shop): the choice is checked against the confirmed constraints before any
     PayPal call; a violating choice is blocked and result["checkout"]["blocked"] is True."""
     emit = progress or (lambda event: None)
+    if constraints is not None and not purchase_guard.matching_products(constraints):
+        # Nothing in the catalog satisfies what the buyer confirmed: don't run the model, don't log
+        # an intent, don't call PayPal. The caller gives the mandate back.
+        message = purchase_guard.no_match_message(constraints)
+        emit({"kind": "no_match", "message": message})
+        return {"no_match": True, "message": message}
     if constraints is not None:
         confirmation = "buyer"
     decision = shopping.run(request_text, client=client, on_step=lambda step: emit({"kind": "step", "step": step}),

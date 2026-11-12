@@ -18,7 +18,12 @@ EPHEMERAL = {"type": "ephemeral"}
 
 
 class RefusalError(RuntimeError):
-    """Claude declined the request (stop_reason "refusal")."""
+    """Claude declined the request (stop_reason "refusal"). The provider's stop details are kept in
+    .details and logged; the message is readable, never the raw details object."""
+
+    def __init__(self, details: Any = None):
+        super().__init__("The model declined to complete this request.")
+        self.details = details
 
 
 def cached_system(text: str) -> list[dict[str, Any]]:
@@ -63,5 +68,7 @@ def create_message(
         getattr(u, "cache_read_input_tokens", None), u.output_tokens,
     )
     if response.stop_reason == "refusal":
-        raise RefusalError(getattr(response, "stop_details", None))
+        details = getattr(response, "stop_details", None)
+        logging.getLogger(__name__).warning("model refusal: %s", details)
+        raise RefusalError(details)
     return response
