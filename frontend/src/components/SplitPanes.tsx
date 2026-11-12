@@ -33,6 +33,9 @@ export function SplitPanes(props: Props) {
 function BuyerPane({ receipt, product, opened, verdict }: Props) {
   const run = receipt.agent_run;
   const paid = verdict?.diff.find((d) => d.field === "price")?.bought ?? product?.price;
+  // The guard stopped this purchase before any PayPal order: nothing was bought or charged.
+  const blocked = receipt.events.some((e) => e.kind === "purchase_blocked") &&
+    !receipt.events.some((e) => e.kind === "paypal_order_created");
   const refund = verdict?.status === "decided" && verdict.fault_class !== "BUYER_REMORSE";
   // A refund is only real once the merchant's accept_claim has been filed with PayPal.
   const refunded = receipt.events.find((e) =>
@@ -45,12 +48,13 @@ function BuyerPane({ receipt, product, opened, verdict }: Props) {
       <p className="quote">{receipt.mandate.request_text}</p>
 
       <div className="block">
-        <span className="eyebrow">What my agent bought</span>
+        <span className="eyebrow">{blocked ? "What my agent tried to buy" : "What my agent bought"}</span>
         <dl className="kv">
           <dt>Item</dt><dd>{product?.name ?? run.chosen_product_id} <span className="mono muted">{run.chosen_product_id}</span></dd>
           <dt>Size</dt><dd className="mono">{run.chosen_size ?? "—"}</dd>
-          <dt>Charged</dt><dd className="mono">{money(paid)}</dd>
+          <dt>{blocked ? "Price" : "Charged"}</dt><dd className="mono">{money(paid)}</dd>
         </dl>
+        {blocked && <div className="note-box blocked-box"><b>Blocked before payment, nothing charged.</b></div>}
       </div>
 
       {opened && (
