@@ -11,12 +11,12 @@ permissions:
 jobs:
   backend:
     name: Backend tests (pytest)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version-file: .python-version
+          python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
       # No secrets and no network: PayPal and Claude are mocked, the ledger runs in memory.
@@ -24,7 +24,7 @@ jobs:
 
   frontend:
     name: Frontend (typecheck and build)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend

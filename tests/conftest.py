@@ -20,3 +20,13 @@ def fresh_rate_limit():
     yield
     limiter.reset()
     parse_limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def hermetic_env(monkeypatch):
+    """Tests never depend on a developer's .env: switches that change behaviour start from a known
+    state (rate limits off, filing off, no vault, no webhook id). Tests that need another value set it."""
+    for name in ("FILING_ENABLED", "DISPUTE_AUTO_FILE", "PAYPAL_VAULT_ID", "PAYPAL_WEBHOOK_ID"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "0")
+    monkeypatch.setenv("RATE_LIMIT_PER_DAY", "0")
