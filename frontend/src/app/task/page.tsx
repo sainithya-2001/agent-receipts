@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "@/api/client";
 import { authorizationText, canAuthorize } from "@/api/authorize";
 import { money } from "@/api/format";
-import type { ShopJob, ShopJobEvent, StoredMandate } from "@/api/types";
+import type { GuardBlock, ShopJob, ShopJobEvent, StoredMandate } from "@/api/types";
 import { DemoLimitNotice, demoLimitOf, type DemoLimitDetail } from "@/components/DemoLimit";
 
 const EXAMPLES = [
@@ -36,9 +36,15 @@ function describe(e: ShopJobEvent): { text: string; detail?: string; bad?: boole
     }
     case "ordering":
       return { text: "Creating the PayPal order" };
+    case "blocked":
+      return { text: "Blocked before payment: no PayPal order was created", bad: true, detail: blockedDetail(e.checkout) };
     case "ordered":
       return { text: `PayPal order ${e.checkout?.status ?? ""}`.trim() };
   }
+}
+
+function blockedDetail(c?: GuardBlock) {
+  return (c?.violations ?? []).map((v) => `${v.field}: you asked ${v.asked ?? "—"}, the agent picked ${v.attempted ?? "—"}`).join("; ");
 }
 
 export default function TaskPage() {
@@ -99,12 +105,13 @@ export default function TaskPage() {
   // only ever link to an https URL (never javascript: or data:), whatever the API returned
   const approveUrl = typeof rawApprove === "string" && /^https:\/\//i.test(rawApprove) ? rawApprove : undefined;
   const receiptId = job?.result?.receipt_id;
+  const blocked = !!job?.result?.checkout?.blocked;
   useEffect(() => {
-    if (status === "done" && receiptId && !approveUrl) {
+    if (status === "done" && receiptId && !approveUrl && !blocked) {
       const t = setTimeout(() => router.push(`/receipts/${receiptId}`), 1500);
       return () => clearTimeout(t);
     }
-  }, [status, receiptId, approveUrl, router]);
+  }, [status, receiptId, approveUrl, blocked, router]);
 
   async function authorize() {
     if (!parsed) return;
@@ -214,7 +221,14 @@ export default function TaskPage() {
             {job.status === "running" && <li className="active"><span className="dot" />Working…</li>}
           </ol>
           {job.status === "error" && <div className="error-box">{job.error}</div>}
-          {job.status === "done" && receiptId && (
+          {job.status === "done" && receiptId && blocked && (
+            <div className="note-box blocked-box">
+              <b>Blocked before payment.</b> The agent&apos;s choice broke what you confirmed
+              ({blockedDetail(job.result?.checkout)}), so nothing was charged and no PayPal order exists.
+              The attempt is on the ledger: <Link href={`/receipts/${receiptId}`}>{receiptId}</Link>
+            </div>
+          )}
+          {job.status === "done" && receiptId && !blocked && (
             <div className="note-box">
               {approveUrl ? (
                 <>The order needs your approval at PayPal first. <a href={approveUrl}>Approve in PayPal →</a> Receipt:{" "}

@@ -47,6 +47,7 @@ function violationText(verdict: Verdict) {
 }
 
 const EVENT_TITLES: Record<string, string> = {
+  purchase_blocked: "Blocked before payment",
   paypal_order_created: "PayPal order created",
   paypal_captured: "Payment captured",
   paypal_cancelled: "Buyer cancelled at PayPal",
@@ -136,6 +137,10 @@ export function buildTimeline(receipt: Receipt, catalog: Product[], disputeId?: 
         frame.tone = "system"; // replaced by a later verdict; kept for the record
         frame.title = "Adjudicator verdict (superseded)";
       }
+    }
+    if (event.kind === "purchase_blocked") {
+      frame.tone = "good";
+      frame.flag = "The pre-payment guard stopped this purchase before any PayPal order existed. Nothing was charged.";
     }
     if (event.kind === "dispute_response" || event.kind === "paypal_outcome") frame.tone = "good";
     if (event.kind === "ledger_import") frame.tone = "system";

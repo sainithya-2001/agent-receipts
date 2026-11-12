@@ -33,7 +33,7 @@ def confirmed_mandate(request_text="shoes"):
     return mandates.confirm(m["mandate_id"])["mandate_id"]
 
 
-def fake_buy(request_text, paypal, client=None, progress=None, constraints=None, confirmed_at=None, confirmation='cli'):
+def fake_buy(request_text, paypal, client=None, progress=None, constraints=None, confirmed_at=None, confirmation='cli', guard=False):
     progress({"kind": "step", "step": {"tool": "search_products", "result_ids": ["p_01"]}})
     progress({"kind": "logged", "receipt_id": "rcpt_x", "constraints": {}, "chosen_product_id": "p_01"})
     progress({"kind": "ordering"})
@@ -78,7 +78,7 @@ def test_buy_emits_events_in_order(monkeypatch):
 
     monkeypatch.setattr(shop.shopping, "run", run)
     monkeypatch.setattr(shop.ledger, "log_intent", lambda mandate, run: "rcpt_1")
-    monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid: {"status": "COMPLETED"})
+    monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid, **kw: {"status": "COMPLETED"})
     seen = []
     shop.buy("r", paypal=None, progress=seen.append)
     assert [e["kind"] for e in seen] == ["step", "logged", "ordering", "ordered"]

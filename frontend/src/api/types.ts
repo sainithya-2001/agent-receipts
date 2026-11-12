@@ -71,21 +71,30 @@ export interface MandateConstraints {
   currency: string;
 }
 
+/** Set on a checkout the pre-payment guard stopped: no PayPal order exists. */
+export interface GuardBlock {
+  blocked?: boolean;
+  violations?: { field: string; asked: string | null; attempted: string | null }[];
+  product_id?: string;
+  amount?: string;
+  currency?: string;
+}
+
 export interface ShopJobEvent {
   at: number;
-  kind: "step" | "logged" | "ordering" | "ordered";
+  kind: "step" | "logged" | "ordering" | "ordered" | "blocked";
   step?: { tool: string; input?: Record<string, unknown>; result_ids?: string[]; error?: string };
   receipt_id?: string;
   constraints?: Constraints;
   chosen_product_id?: string | null;
-  checkout?: { status?: string; order_id?: string; approve_url?: string; capture_id?: string };
+  checkout?: GuardBlock & { status?: string; order_id?: string; approve_url?: string; capture_id?: string };
 }
 
 export interface ShopJob {
   job_id: string;
   status: "running" | "done" | "error";
   events: ShopJobEvent[];
-  result: { receipt_id: string; checkout?: { status?: string; approve_url?: string } } | null;
+  result: { receipt_id: string; checkout?: GuardBlock & { status?: string; approve_url?: string } } | null;
   error: string | null;
 }
 

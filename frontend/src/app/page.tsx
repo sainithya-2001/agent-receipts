@@ -79,6 +79,7 @@ export default function QueuePage() {
           <div key={s.name} className={`seed ${s.expected_status === "needs_review" ? "attack" : ""}`}>
             <span className="seed-title">{s.title}</span>
             <span className="seed-breaks">{s.breaks}</span>
+            <span className="muted" style={{ fontSize: 12 }}>Guard off: an agent platform without a pre-payment guard.</span>
             <span className="seed-foot">
               <span>
                 <span className="eyebrow" style={{ display: "block", marginBottom: 4 }}>expect</span>

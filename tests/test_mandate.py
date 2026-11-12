@@ -102,7 +102,7 @@ def test_agent_is_told_the_constraints_and_cannot_report_its_own():
 def test_receipt_constraints_equal_the_confirmed_constraints(monkeypatch):
     # Even if the agent returned different constraints, the receipt records the confirmed ones.
     sneaky = {"constraints": {"category": "running shoes", "size": "9", "max_price": 500, "currency": "USD"}}
-    monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid: {"status": "COMPLETED"})
+    monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid, **kw: {"status": "COMPLETED"})
     result = shop.buy(REQUEST, paypal=None, client=agent_client(sneaky), constraints=CONFIRMED,
                       confirmed_at="2026-11-11T10:00:00+00:00")
     receipt = ledger.get_receipt(result["receipt_id"])
@@ -114,7 +114,7 @@ def test_receipt_constraints_equal_the_confirmed_constraints(monkeypatch):
 
 
 def test_without_confirmed_constraints_nothing_changes(monkeypatch):
-    monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid: {"status": "COMPLETED"})
+    monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid, **kw: {"status": "COMPLETED"})
     c = agent_client({"constraints": CONFIRMED})
     result = shop.buy(REQUEST, paypal=None, client=c)
     receipt = ledger.get_receipt(result["receipt_id"])
@@ -182,7 +182,7 @@ def test_confirmed_timestamp_comes_from_the_confirm_step_and_is_idempotent():
 
 
 def test_receipt_carries_the_confirm_step_time_end_to_end(monkeypatch):
-    monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid: {"status": "COMPLETED"})
+    monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid, **kw: {"status": "COMPLETED"})
     client = TestClient(app)
     mandate_id = parsed(client)["mandate_id"]
     stamp = client.post(f"/mandate/{mandate_id}/confirm").json()["confirmed_by_buyer_at"]

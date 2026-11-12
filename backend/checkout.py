@@ -11,6 +11,7 @@ from typing import Any
 
 from backend import ledger
 from backend.catalog import get_product
+from backend import guard as purchase_guard
 from backend.config import get_settings
 from backend.paypal import orders
 from backend.paypal.client import PayPalClient
@@ -20,9 +21,13 @@ class CheckoutError(RuntimeError):
     pass
 
 
-def start(paypal: PayPalClient, receipt_id: str) -> dict[str, Any]:
+def start(paypal: PayPalClient, receipt_id: str, *, guard: bool = False) -> dict[str, Any]:
     """Create the PayPal order for a logged intent. Returns the order, and the approval
-    link when the buyer still has to approve."""
+    link when the buyer still has to approve.
+
+    guard=True checks the choice against the receipt's confirmed constraints first. On a violation
+    no PayPal call is made: a purchase_blocked event is appended and {"blocked": True, ...} returned.
+    Scenario runs pass guard=False (an agent platform without a guard) and record that."""
     receipt = ledger.get_receipt(receipt_id) if receipt_id else None
     if receipt is None:
         raise CheckoutError("A PayPal order needs a logged receipt_id; log the intent first")
@@ -35,6 +40,16 @@ def start(paypal: PayPalClient, receipt_id: str) -> dict[str, Any]:
     product = get_product(run["chosen_product_id"])
     if product is None:
         raise CheckoutError(f"Unknown product {run['chosen_product_id']!r}")
+
+    if guard:
+        found = purchase_guard.violations(receipt["mandate"]["constraints"], product, run.get("chosen_size"))
+        if found:
+            ledger.append_event(receipt_id, "purchase_blocked", {
+                "violations": found, "product_id": product["product_id"], "size": run.get("chosen_size"),
+                "price": f"{product['price']:.2f}", "currency": product["currency"], "guard": "on"})
+            return {"receipt_id": receipt_id, "blocked": True, "status": "BLOCKED", "violations": found,
+                    "product_id": product["product_id"], "amount": f"{product['price']:.2f}",
+                    "currency": product["currency"]}
 
     # Charge the catalog price, never a price the agent reported.
     amount = f"{product['price']:.2f}"
@@ -55,7 +70,8 @@ def start(paypal: PayPalClient, receipt_id: str) -> dict[str, Any]:
         receipt_id,
         "paypal_order_created",
         {"order_id": order["id"], "status": order["status"], "amount": amount, "currency": product["currency"],
-         "vaulted": bool(settings.paypal_vault_id), "invoice_id": receipt["hash"]},
+         "vaulted": bool(settings.paypal_vault_id), "invoice_id": receipt["hash"],
+         "guard": "on" if guard else "off"},
     )
     result = {"receipt_id": receipt_id, "order_id": order["id"], "status": order["status"],
               "amount": amount, "currency": product["currency"]}

@@ -106,7 +106,7 @@ def shop_route(req: ShopRequest) -> dict:
 
     def run(progress=None):
         return shop.buy(confirmed["request_text"], paypal, progress=progress, constraints=confirmed["constraints"],
-                        confirmed_at=confirmed["confirmed_by_buyer_at"])
+                        confirmed_at=confirmed["confirmed_by_buyer_at"], guard=True)
 
     if req.background:
         return {"job_id": jobs.start(run, _describe_shop_error)}

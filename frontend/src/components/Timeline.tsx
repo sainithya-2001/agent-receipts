@@ -208,6 +208,11 @@ function EventBody({ event, verdict, receipt }: { event: LedgerEvent; verdict?: 
             Order <span className="mono">{e.order_id}</span> · {money(e.amount, e.currency)} · {e.status}
             {e.vaulted ? " · vaulted, no redirect" : ""}
           </div>
+          {e.guard === "off" && (
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+              Pre-payment guard off: an agent platform without a guard (the order was not checked against the mandate).
+            </div>
+          )}
           {anchor && anchorState(anchor, failed) === "mismatch" && anchor.order_id === e.order_id ? (
             <div className="hash-line anchor-mismatch" style={{ marginTop: 6 }}>
               <span>invoice_id</span>
@@ -221,6 +226,19 @@ function EventBody({ event, verdict, receipt }: { event: LedgerEvent; verdict?: 
               <span>{e.invoice_id ? `${e.invoice_id} (receipt hash sent to PayPal, as the ledger records it)` : "none: order predates anchoring"}</span>
             </div>
           )}
+          {tail}
+        </>
+      );
+    case "purchase_blocked":
+      return (
+        <>
+          <div>
+            {e.product_id} · {money(e.price, e.currency)}{e.size ? ` · size ${e.size}` : ""} was not bought.
+          </div>
+          {(e.violations ?? []).map((v: any, i: number) => (
+            <div key={i} className="mono" style={{ fontSize: 13 }}>{v.field}: confirmed {v.asked ?? "—"}, agent attempted {v.attempted ?? "—"}</div>
+          ))}
+          <div className="muted" style={{ fontSize: 12.5 }}>No PayPal call was made.</div>
           {tail}
         </>
       );
