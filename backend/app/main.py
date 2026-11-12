@@ -105,14 +105,30 @@ def shop_route(req: ShopRequest) -> dict:
         raise HTTPException(409, str(exc))
 
     def run(progress=None):
-        return shop.buy(confirmed["request_text"], paypal, progress=progress, constraints=confirmed["constraints"],
-                        confirmed_at=confirmed["confirmed_by_buyer_at"], guard=True)
+        ordering = {"started": False}
+
+        def track(event: dict) -> None:
+            if event.get("kind") == "ordering":
+                ordering["started"] = True
+            if progress:
+                progress(event)
+
+        try:
+            return shop.buy(confirmed["request_text"], paypal, progress=track, constraints=confirmed["constraints"],
+                            confirmed_at=confirmed["confirmed_by_buyer_at"], guard=True)
+        except Exception as exc:
+            # Failed before any PayPal call could have been made (the agent, the ledger, or checkout's own
+            # pre-checks): the buyer may retry with the same mandate. Once ordering began, an order may
+            # exist, so the mandate stays used.
+            mandates.release(confirmed["mandate_id"],
+                             order_may_exist=ordering["started"] and not isinstance(exc, checkout.CheckoutError))
+            raise
 
     if req.background:
         return {"job_id": jobs.start(run, _describe_shop_error)}
     try:
         return run()
-    except (ShoppingError, RefusalError, ledger.InvalidReceipt) as exc:
+    except (ShoppingError, RefusalError, ledger.InvalidReceipt, checkout.CheckoutError) as exc:
         raise HTTPException(422, str(exc))
     except PayPalError as exc:
         raise _paypal_error(exc)
@@ -122,7 +138,9 @@ def _describe_shop_error(exc: Exception) -> str:
     if isinstance(exc, PayPalError):
         return f"PayPal rejected the order ({exc.status}, debug id {exc.debug_id})."
     if isinstance(exc, (ShoppingError, RefusalError, ledger.InvalidReceipt)):
-        return str(exc)
+        return f"{exc} Nothing was charged; you can authorize again."
+    if isinstance(exc, checkout.CheckoutError):
+        return f"{exc}. Nothing was charged; you can authorize again."
     logging.getLogger(__name__).exception("shop run failed")
     return "The run failed unexpectedly; try again."
 

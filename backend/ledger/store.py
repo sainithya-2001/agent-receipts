@@ -35,6 +35,16 @@ CREATE TABLE IF NOT EXISTS webhook_events (
     event_id TEXT PRIMARY KEY,
     received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
+-- Mandates (parsed requests the buyer confirms and spends once). Bookkeeping like webhook_events:
+-- outside the hash chain, mutable, and not evidence. The receipt records the confirmed mandate itself.
+CREATE TABLE IF NOT EXISTS mandates (
+    mandate_id TEXT PRIMARY KEY,
+    request_text TEXT NOT NULL,
+    constraints TEXT NOT NULL,      -- JSON
+    confirmed_by_buyer_at TEXT,
+    used INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
 CREATE TRIGGER IF NOT EXISTS records_no_update BEFORE UPDATE ON records
     BEGIN SELECT RAISE(ABORT, 'ledger records are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS records_no_delete BEFORE DELETE ON records
@@ -115,5 +125,5 @@ def clear() -> None:
     """For tests: drop everything and start an empty chain."""
     with _lock:
         conn = connection()
-        conn.executescript("DROP TABLE IF EXISTS records; DROP TABLE IF EXISTS webhook_events;")
+        conn.executescript("DROP TABLE IF EXISTS records; DROP TABLE IF EXISTS webhook_events; DROP TABLE IF EXISTS mandates;")
         conn.executescript(_SCHEMA)

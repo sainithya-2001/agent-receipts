@@ -285,6 +285,7 @@ function EventBody({ event, verdict, receipt }: { event: LedgerEvent; verdict?: 
           <div><b>{code || "resolved"}</b>{e.outcome_reason ? ` · ${String(e.outcome_reason).replace(/_/g, " ").toLowerCase()}` : ""}</div>
           {e.amount_refunded && <div>Refunded <span className="mono">{money(e.amount_refunded.value, e.amount_refunded.currency_code)}</span> to the buyer</div>}
           <div className="muted" style={{ fontSize: 12.5 }}>
+            {e.filled ? `Completes chain #${e.supersedes} (${(e.filled as string[]).join(", ").replace(/_/g, " ")} arrived later) · ` : ""}
             Read from PayPal{e.refund_id ? <> · refund <span className="mono">{e.refund_id}</span></> : null}{e.resolved_at ? ` · ${e.resolved_at}` : ""}
           </div>
           {tail}

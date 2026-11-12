@@ -119,3 +119,44 @@ def test_resolved_dispute_records_one_paypal_outcome_event():
 def test_simulated_disputes_never_get_an_outcome():
     resolve.resolve({**resolved(qhv_dispute()), "simulated": True}, client=fake_claude("MERCHANT_ERROR", "AL-4"))
     assert outcomes() == []
+
+
+def test_late_refund_details_are_filled_in_by_a_later_resolve_and_then_stop():
+    bare = {**qhv_dispute(), "status": "RESOLVED", "update_time": "2026-11-11T20:16:30.000Z",
+            "dispute_outcome": {"outcome_code": "RESOLVED_BUYER_FAVOUR"}}  # refund details not there yet
+    resolve.resolve(bare, client=fake_claude("MERCHANT_ERROR", "AL-4"))
+    resolve.resolve(bare, client=fake_claude())  # nothing new: no extra event
+    assert len(outcomes()) == 1 and outcomes()[0]["refund_id"] is None
+    first = outcomes()[0]
+
+    resolve.resolve(resolved(qhv_dispute()), client=fake_claude())  # PayPal now reports the refund
+    resolve.resolve(resolved(qhv_dispute()), client=fake_claude())  # and again: still just one fill-in
+    first_seen, filled = outcomes()
+    assert first_seen == first  # never rewritten
+    assert filled["supersedes"] == first["seq"] and set(filled["filled"]) == {"outcome_reason", "amount_refunded", "refund_id"}
+    assert filled["refund_id"] == "0KB87031KB858403M" and filled["outcome_code"] == "RESOLVED_BUYER_FAVOUR"
+    assert ledger.verify_chain()["ok"] is True
+
+
+def _filed_dispute():
+    resolve.resolve(qhv_dispute(), client=fake_claude("MERCHANT_ERROR", "AL-4"))
+    ledger.append_event(STAGED, "dispute_response", {"dispute_id": "PP-R-QHV-10199556", "action": "accept_claim",
+                                                     "note": "n"})
+
+
+def test_rejudge_is_refused_after_a_response_was_filed():
+    _filed_dispute()
+    with pytest.raises(resolve.ResolveError, match="already filed"):
+        resolve.rejudge(qhv_dispute(), "second thoughts", client=fake_claude("BUYER_REMORSE", "AL-5"))
+    assert len([e for e in ledger.get_receipt(STAGED)["events"] if e["kind"] == "dispute_verdict"]) == 1
+
+
+def test_forced_rejudge_after_filing_is_recorded_as_forced_and_still_never_files():
+    _filed_dispute()
+    out = resolve.rejudge(qhv_dispute(), "Operator override", client=fake_claude("BUYER_REMORSE", "AL-5"), force=True)
+    assert out["filed"] is None
+    event = [e for e in ledger.get_receipt(STAGED)["events"] if e["kind"] == "dispute_verdict"][-1]
+    assert event["forced_after_filing"] == ["accept_claim"] and event["reason"] == "Operator override"
+    assert event["verdict"]["rejudged"]["forced_after_filing"] == ["accept_claim"]
+    with pytest.raises(resolve.ResolveError, match="reason"):
+        resolve.rejudge(qhv_dispute(), " ", client=fake_claude(), force=True)

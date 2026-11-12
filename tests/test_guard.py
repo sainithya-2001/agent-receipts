@@ -98,3 +98,78 @@ def test_public_shop_route_turns_the_guard_on(monkeypatch):
     with patch("backend.app.main.shop.buy", side_effect=fake_buy):
         assert TestClient(app).post("/shop", json={"mandate_id": m["mandate_id"]}).status_code == 200
     assert seen["guard"] is True
+
+
+# --- mandates: persisted, and retryable until an order may exist ---
+
+def _confirmed():
+    from backend import mandates
+    m = mandates.create("shoes", {"size": "8", "max_price": 120.0, "currency": "USD"})
+    return mandates.confirm(m["mandate_id"])["mandate_id"]
+
+
+def _post(monkeypatch, buy):
+    from fastapi.testclient import TestClient
+    from backend.app.main import app
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "id"); monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "s")
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "0")
+    mid = _confirmed()
+    client = TestClient(app)
+    with patch("backend.app.main.shop.buy", side_effect=buy):
+        return client, mid, client.post("/shop", json={"mandate_id": mid})
+
+
+def test_mandates_live_in_the_database_not_in_process_memory():
+    from backend import mandates
+    from backend.ledger import store
+    m = mandates.create("shoes", {"size": "8"})
+    assert store.read("SELECT request_text FROM mandates WHERE mandate_id = ?", (m["mandate_id"],))[0][0] == "shoes"
+    ledger.clear()  # a fresh database: gone, with a clear 404 reason
+    with pytest.raises(mandates.MandateNotFound):
+        mandates.confirm(m["mandate_id"])
+    assert ledger.verify_chain()["ok"]  # never part of the hash chain
+
+
+def test_failed_before_payment_can_retry_with_the_same_mandate(monkeypatch):
+    from backend.agents.shopping import ShoppingError
+    calls = []
+
+    def buy(*a, **kw):
+        calls.append(1)
+        if len(calls) == 1:
+            raise ShoppingError("agent hit max_tokens")
+        return {"receipt_id": "r"}
+    client, mid, first = _post(monkeypatch, buy)
+    assert first.status_code == 422
+    with patch("backend.app.main.shop.buy", side_effect=buy):
+        assert client.post("/shop", json={"mandate_id": mid}).status_code == 200
+        assert client.post("/shop", json={"mandate_id": mid}).status_code == 409  # a success uses it up
+
+
+def test_checkout_precheck_failure_is_retryable(monkeypatch):
+    def buy(*a, progress=None, **kw):
+        progress({"kind": "ordering"})
+        raise checkout.CheckoutError("Ledger failed verification")  # raised before any PayPal call
+    client, mid, first = _post(monkeypatch, buy)
+    assert first.status_code == 422
+    with patch("backend.app.main.shop.buy", return_value={"receipt_id": "r"}):
+        assert client.post("/shop", json={"mandate_id": mid}).status_code == 200
+
+
+def test_failure_once_ordering_began_keeps_the_mandate_used(monkeypatch):
+    from backend.paypal.client import PayPalError
+
+    def buy(*a, progress=None, **kw):
+        progress({"kind": "ordering"})
+        raise PayPalError(500, "boom", None)  # the order may or may not exist
+    client, mid, first = _post(monkeypatch, buy)
+    assert first.status_code == 502
+    with patch("backend.app.main.shop.buy", return_value={"receipt_id": "r"}) as again:
+        assert client.post("/shop", json={"mandate_id": mid}).status_code == 409
+    again.assert_not_called()
+
+
+def test_blocked_purchase_is_not_a_failure_and_keeps_the_mandate_used(monkeypatch):
+    client, mid, first = _post(monkeypatch, lambda *a, **kw: {"receipt_id": "r", "checkout": {"blocked": True}})
+    assert first.status_code == 200
+    assert client.post("/shop", json={"mandate_id": mid}).status_code == 409

@@ -2,7 +2,7 @@
 
     python -m scripts.disputes list
     python -m scripts.disputes resolve DISPUTE_ID          # adjudicate only; PayPal is not changed
-    python -m scripts.disputes rejudge DISPUTE_ID "reason"   # new verdict supersedes the stored one, never files
+    python -m scripts.disputes rejudge DISPUTE_ID "reason" [--force]   # --force: only after a response was filed; new verdict supersedes the stored one, never files
     python -m scripts.disputes resolve DISPUTE_ID --file   # also take the next PayPal step
     python -m scripts.disputes scenario NAME               # seeded demo failure; real vaulted order, simulated dispute
     python -m scripts.disputes scenario all
@@ -41,7 +41,9 @@ def main(argv: list[str]) -> int:
                 print(d["dispute_id"], d.get("status"), d.get("dispute_life_cycle_stage"), d.get("reason"))
         elif argv[0] == "rejudge" and len(argv) >= 3:
             paypal = PayPalClient()
-            result = resolve.rejudge(disputes.get_dispute(paypal, argv[1]), " ".join(argv[2:]), paypal=paypal)
+            force = "--force" in argv[2:]
+            reason = " ".join(a for a in argv[2:] if a != "--force")
+            result = resolve.rejudge(disputes.get_dispute(paypal, argv[1]), reason, paypal=paypal, force=force)
             print(json.dumps(_card(result), indent=2))
         elif argv[0] == "resolve" and len(argv) >= 2:
             result = resolve.resolve_by_id(PayPalClient(), argv[1], file="--file" in argv[2:])

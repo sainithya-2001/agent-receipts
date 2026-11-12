@@ -41,23 +41,41 @@ def _events(receipt: dict[str, Any], kind: str, dispute_id: str) -> list[dict[st
     return [e for e in receipt["events"] if e["kind"] == kind and e.get("dispute_id") == dispute_id]
 
 
+OUTCOME_FIELDS = ("outcome_code", "outcome_reason", "amount_refunded", "refund_id", "resolved_at", "item_notes")
+
+
+def _blank(value: Any) -> bool:
+    return value in (None, "", [], {})
+
+
 def _record_outcome(receipt: dict[str, Any], dispute: dict[str, Any]) -> None:
-    """Once PayPal reports the dispute RESOLVED, append one read-only paypal_outcome event (what PayPal
-    decided, the refund, when). Nothing is sent to PayPal; it is recorded once per dispute."""
+    """Once PayPal reports the dispute RESOLVED, append a read-only paypal_outcome event (what PayPal
+    decided, the refund, when). Nothing is sent to PayPal. PayPal's refund details can lag the status
+    change, so a later resolve (or webhook) that sees fields the recorded outcome lacks appends one more
+    paypal_outcome that carries everything known and names the one it fills in (supersedes); nothing is
+    ever rewritten, and once nothing is missing no more events are added."""
     if dispute.get("simulated") or dispute.get("status") != "RESOLVED":
         return
     dispute_id = dispute["dispute_id"]
-    if _events(receipt, "paypal_outcome", dispute_id):
-        return
     outcome = dispute.get("dispute_outcome") or {}
     refunds = (dispute.get("refund_details") or {}).get("transactions") or []
-    ledger.append_event(receipt["receipt_id"], "paypal_outcome", {
-        "dispute_id": dispute_id, "outcome_code": outcome.get("outcome_code"),
-        "outcome_reason": outcome.get("outcome_reason"), "amount_refunded": outcome.get("amount_refunded"),
+    seen = {
+        "outcome_code": outcome.get("outcome_code"), "outcome_reason": outcome.get("outcome_reason"),
+        "amount_refunded": outcome.get("amount_refunded"),
         "refund_id": refunds[0].get("id") if refunds else None, "resolved_at": dispute.get("update_time"),
         # the complaint as the dispute showed it, since PayPal keeps it in the item notes
         "item_notes": adjudicator.item_notes(dispute, descriptions=False),
-    })
+    }
+    existing = _events(receipt, "paypal_outcome", dispute_id)
+    if not existing:
+        ledger.append_event(receipt["receipt_id"], "paypal_outcome", {"dispute_id": dispute_id, **seen})
+        return
+    last = existing[-1]
+    filled = [k for k in OUTCOME_FIELDS if _blank(last.get(k)) and not _blank(seen[k])]
+    if filled:
+        merged = {k: last.get(k) if not _blank(last.get(k)) else seen[k] for k in OUTCOME_FIELDS}
+        ledger.append_event(receipt["receipt_id"], "paypal_outcome",
+                            {"dispute_id": dispute_id, **merged, "supersedes": last["seq"], "filled": filled})
 
 
 def _anchor(receipt_id: str, txn: dict[str, Any], paypal: PayPalClient | None, *,
@@ -159,10 +177,13 @@ def _resolve(dispute: dict[str, Any], *, paypal: PayPalClient | None = None, fil
 
 
 def rejudge(dispute: dict[str, Any], reason: str, *, paypal: PayPalClient | None = None,
-            client: anthropic.Anthropic | None = None) -> dict[str, Any]:
+            client: anthropic.Anthropic | None = None, force: bool = False) -> dict[str, Any]:
     """Judge a dispute again and append the new verdict as a dispute_verdict event with
     supersedes=<seq of the verdict it replaces> and the reason. The old verdict stays in the ledger;
-    everything after this reads the latest. Never files anything."""
+    everything after this reads the latest. Never files anything.
+
+    Once a response has been filed with PayPal the verdict it rested on is part of what PayPal holds, so a
+    re-judgement is refused unless force=True (CLI --force) with a reason; the forced one is marked."""
     if not reason.strip():
         raise ResolveError("A re-judgement needs a reason")
     with _dispute_lock(dispute["dispute_id"]):
@@ -173,12 +194,19 @@ def rejudge(dispute: dict[str, Any], reason: str, *, paypal: PayPalClient | None
         if not recorded:
             raise ResolveError("There is no verdict to supersede; resolve the dispute first")
         old = recorded[-1]
+        filed = [e["action"] for e in _events(receipt, "dispute_response", dispute_id)]
+        if filed and not force:
+            raise ResolveError(f"A response was already filed with PayPal ({', '.join(filed)}); "
+                               "re-judging now would contradict it. Use --force with a reason to record a new verdict anyway.")
         anchor = _anchor(receipt["receipt_id"], txn, paypal, simulated=bool(dispute.get("simulated")))
         facts = adjudicator.find_facts(receipt, dispute, chain=ledger.verify_chain(), anchor=anchor)
         verdict = adjudicator.adjudicate(facts, dispute, client=client)
         verdict["rejudged"] = {"supersedes": old["seq"], "reason": reason}
+        if filed:
+            verdict["rejudged"]["forced_after_filing"] = filed
         ledger.append_event(receipt["receipt_id"], "dispute_verdict", {
-            "dispute_id": dispute_id, "verdict": verdict, "supersedes": old["seq"], "reason": reason})
+            "dispute_id": dispute_id, "verdict": verdict, "supersedes": old["seq"], "reason": reason,
+            **({"forced_after_filing": filed} if filed else {})})
         log.info("dispute %s: re-judged, supersedes verdict at chain #%s", dispute_id, old["seq"])
         return _resolve(dispute, paypal=paypal, file=False, client=client)
 

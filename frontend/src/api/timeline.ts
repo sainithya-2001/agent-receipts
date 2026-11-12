@@ -143,6 +143,10 @@ export function buildTimeline(receipt: Receipt, catalog: Product[], disputeId?: 
       frame.flag = "The pre-payment guard stopped this purchase before any PayPal order existed. Nothing was charged.";
     }
     if (event.kind === "dispute_response" || event.kind === "paypal_outcome") frame.tone = "good";
+    if (event.kind === "paypal_outcome" && receipt.events.some((x) => x.kind === "paypal_outcome" && x.supersedes === event.seq)) {
+      frame.tone = "system"; // PayPal's refund details arrived later; the newer record carries them all
+      frame.title = "Resolved by PayPal (details completed in a later record)";
+    }
     if (event.kind === "ledger_import") frame.tone = "system";
     frames.push(frame);
   }
