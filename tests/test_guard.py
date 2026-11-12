@@ -250,3 +250,12 @@ def test_task_page_gets_the_readable_refusal_message(monkeypatch):
         sync = client.post("/shop", json={"mandate_id": m["mandate_id"], "confirm_token": m["confirm_token"]})  # released after the failure: retryable
     assert job["status"] == "error" and job["error"] == SHOP_REFUSED and "RefusalStopDetails" not in job["error"]
     assert sync.status_code == 422 and sync.json()["detail"] == SHOP_REFUSED
+
+
+def test_agent_prompt_keeps_the_wording_that_does_not_trigger_refusals():
+    # Live checks (Nov 12, claude-sonnet-5-5): "explain why" and "a decision_summary of a few words" /
+    # "a short note" / a quoted sentence were refused (reasoning_extraction) on ordinary requests,
+    # "say so briefly in decision_summary" passed 4/4. Re-run a live check before rewording this sentence.
+    from backend.agents import shopping
+    assert "say so briefly in decision_summary" in shopping.SYSTEM
+    assert "explain why" not in shopping.SYSTEM.lower()
