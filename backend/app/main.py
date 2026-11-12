@@ -2,7 +2,9 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Request
+from typing import Annotated
+
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Path, Query, Request
 from pydantic import BaseModel, ConfigDict
 
 from backend import checkout, jobs, ledger, mandates, resolve, scenarios, shop
@@ -15,7 +17,7 @@ from backend.agents.shopping import ShoppingError
 from backend.config import get_settings
 from backend.ledger import LedgerError
 from backend.paypal import webhooks
-from backend.paypal.client import PayPalClient, PayPalError
+from backend.paypal.client import PayPalClient, PayPalError, UnsafePayPalPath
 from backend.ratelimit import demo_limit, demo_limit_parse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -134,8 +136,14 @@ def shop_job(job_id: str) -> dict:
     return job
 
 
+# Ids that go into PayPal URLs: letters, digits, "-" and "_" only. Anything else (".", "/", "?", "#", "%")
+# could steer a call at another PayPal endpoint, so it is refused with 422 before any PayPal call.
+_ID = r"^[A-Za-z0-9_-]{1,64}$"
+PayPalId = Annotated[str, Query(pattern=_ID, max_length=64)]
+
+
 @app.get("/paypal/return")
-def paypal_return(token: str) -> dict:
+def paypal_return(token: PayPalId) -> dict:
     """PayPal sends the buyer here after approval; token is the order id."""
     try:
         return checkout.complete(PayPalClient(), token)
@@ -144,10 +152,14 @@ def paypal_return(token: str) -> dict:
 
 
 @app.get("/paypal/cancel")
-def paypal_cancel(token: str) -> dict:
+def paypal_cancel(token: PayPalId) -> dict:
     receipt_id = ledger.find_by_order(token)
     if receipt_id:
-        ledger.append_event(receipt_id, "paypal_cancelled", {"order_id": token})
+        kinds = {e["kind"] for e in ledger.get_receipt(receipt_id)["events"] if e.get("order_id") == token}
+        # Anyone can open this URL, so it can't rewrite the history of an order that was already
+        # captured, and a repeat doesn't add a second event.
+        if not kinds & {"paypal_captured", "paypal_cancelled"}:
+            ledger.append_event(receipt_id, "paypal_cancelled", {"order_id": token})
     return {"order_id": token, "status": "CANCELLED_BY_BUYER", "receipt_id": receipt_id}
 
 
@@ -166,7 +178,8 @@ def ledger_verify() -> dict:
 
 
 @app.get("/receipts/{receipt_id}/paypal-anchor")
-def receipt_paypal_anchor(receipt_id: str, order_id: str | None = None, capture_id: str | None = None) -> dict:
+def receipt_paypal_anchor(receipt_id: str, order_id: Annotated[str | None, Query(pattern=_ID, max_length=64)] = None,
+                          capture_id: Annotated[str | None, Query(pattern=_ID, max_length=64)] = None) -> dict:
     """Compare the receipt's recomputed intent hash with the invoice_id PayPal holds."""
     try:
         return ledger.verify_receipt_against_paypal(receipt_id, PayPalClient(), order_id=order_id,
@@ -234,7 +247,7 @@ def catalog() -> list[dict]:
 
 
 @app.post("/disputes/{dispute_id}/resolve", dependencies=[Depends(demo_limit)])
-def dispute_resolve(dispute_id: str, file: bool = False) -> dict:
+def dispute_resolve(dispute_id: Annotated[str, Path(pattern=_ID, max_length=64)], file: bool = False) -> dict:
     """Adjudicate a real dispute. file=true also takes the next PayPal step (needs FILING_ENABLED)."""
     try:
         if file:

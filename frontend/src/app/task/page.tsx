@@ -95,7 +95,9 @@ export default function TaskPage() {
     return () => clearInterval(timer);
   }, [polling, status]);
 
-  const approveUrl = job?.result?.checkout?.approve_url;
+  const rawApprove = job?.result?.checkout?.approve_url;
+  // only ever link to an https URL (never javascript: or data:), whatever the API returned
+  const approveUrl = typeof rawApprove === "string" && /^https:\/\//i.test(rawApprove) ? rawApprove : undefined;
   const receiptId = job?.result?.receipt_id;
   useEffect(() => {
     if (status === "done" && receiptId && !approveUrl) {

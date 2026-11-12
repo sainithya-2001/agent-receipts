@@ -4,6 +4,7 @@ Every PayPal call in the project goes through PayPalClient.request so that the
 PayPal-Debug-Id and status of each call end up in the logs.
 """
 import logging
+import re
 import time
 import uuid
 from typing import Any
@@ -16,6 +17,14 @@ log = logging.getLogger("paypal")
 
 # Refresh the token this many seconds before PayPal says it expires.
 TOKEN_SKEW_SECONDS = 60
+
+
+# Plain path segments only. PayPal ids are letters, digits, "-" and "_".
+_SAFE_PATH = re.compile(r"(?:/[A-Za-z0-9_\-]+)+")
+
+
+class UnsafePayPalPath(ValueError):
+    """An id or path that could reach a different PayPal endpoint than the caller meant."""
 
 
 class PayPalError(Exception):
@@ -78,6 +87,10 @@ class PayPalClient:
         Pass `files` for multipart endpoints (e.g. provide-evidence); httpx then
         sets the multipart Content-Type itself.
         """
+        if not _SAFE_PATH.fullmatch(path):
+            # Ids from callers end up in the path. Anything but plain segments could reach another PayPal
+            # endpoint ("..", "?", "#", "%2f"), so refuse before a token is even fetched.
+            raise UnsafePayPalPath(f"Refusing to call PayPal with an unsafe path: {path[:80]!r}")
         hdrs = {"Authorization": f"Bearer {self.access_token()}", "Accept": "application/json"}
         if files is None:
             hdrs["Content-Type"] = "application/json"

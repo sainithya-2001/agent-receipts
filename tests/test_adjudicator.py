@@ -63,7 +63,7 @@ def test_four_scenarios(name, fault, rule, violations, flagged):
     kwargs, payload = sent_payload(client)
     assert kwargs["output_config"]["format"]["type"] == "json_schema"
     assert "tool_choice" not in kwargs  # forced tool use is a 400 on current models
-    assert payload["buyer_messages"] == [s["dispute"]["buyer_message"]]
+    assert payload["untrusted_buyer_text"]["buyer_messages"] == [s["dispute"]["buyer_message"]]
     assert rule in {r["id"] for r in payload["rules"]}
 
 

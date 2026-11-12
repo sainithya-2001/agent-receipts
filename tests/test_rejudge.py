@@ -49,7 +49,8 @@ def test_message_no_with_size_complaint_in_notes_is_merchant_error_al4():
     size = next(r for r in v["diff"] if r["field"] == "size")
     assert size["delivered"] == "9" and size["delivered_ok"] is False
     payload = json.loads(claude.messages.create.call_args_list[0].kwargs["messages"][0]["content"])
-    assert payload["buyer_messages"] == ["no"] and NOTES in payload["disputed_item_notes"]
+    assert payload["untrusted_buyer_text"]["buyer_messages"] == ["no"]
+    assert NOTES in payload["untrusted_buyer_text"]["disputed_item_notes"]
 
 
 def test_rejudge_appends_a_verdict_that_supersedes_and_keeps_the_old_one():
