@@ -9,6 +9,12 @@ import { money } from "@/api/format";
 import type { GuardBlock, ShopJob, ShopJobEvent, StoredMandate } from "@/api/types";
 import { DemoLimitNotice, demoLimitOf, type DemoLimitDetail } from "@/components/DemoLimit";
 
+/** Failed polls tolerated in a row before the run is treated as lost. */
+const MAX_POLL_RETRIES = 2;
+
+const LOST_RUN_NOTE =
+  "The server restarted while your request was running. Nothing may have been charged; check the Dispute queue or try again.";
+
 const EXAMPLES = [
   "Buy me running shoes, size 8, under $120",
   "Get me a trail running shoe, size 9, up to $130",
@@ -60,10 +66,11 @@ export default function TaskPage() {
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState<DemoLimitDetail | null>(null);
   const [stale, setStale] = useState(false); // the mandate expired or was already used
+  const [lost, setLost] = useState(false); // the run can no longer be followed (server restarted or unreachable)
   const jobId = useRef<string | null>(null);
 
   const ok = canAuthorize(confirmed);
-  const busy = starting || job?.status === "running";
+  const busy = starting || (job?.status === "running" && !lost);
 
   const edit = (next: string) => { setText(next); setParsed(null); setStale(false); setError(null); setLimit(null); };
 
@@ -97,8 +104,24 @@ export default function TaskPage() {
   const status = job?.status;
   useEffect(() => {
     if (!polling || status !== "running") return;
+    let failures = 0;
     const timer = setInterval(() => {
-      api.shopJob(polling).then(setJob, (e) => { setError(String(e.message ?? e)); clearInterval(timer); });
+      api.shopJob(polling).then(
+        (j) => {
+          if (!j || typeof j.status !== "string") { // not a run record (an error page, a proxy reply)
+            if (++failures > MAX_POLL_RETRIES) { clearInterval(timer); setLost(true); }
+            return;
+          }
+          failures = 0;
+          setJob(j);
+        },
+        (e) => {
+          // 404: the server no longer knows this run (it restarted). Anything else (timeout, non-JSON,
+          // 5xx while it restarts): retry a couple of times before giving up.
+          const unknown = e instanceof ApiError && e.status === 404;
+          if (unknown || ++failures > MAX_POLL_RETRIES) { clearInterval(timer); setLost(true); }
+        },
+      );
     }, 700);
     return () => clearInterval(timer);
   }, [polling, status]);
@@ -117,7 +140,7 @@ export default function TaskPage() {
 
   async function authorize() {
     if (!parsed) return;
-    setError(null); setLimit(null); setJob(null); setStarting(true);
+    setError(null); setLimit(null); setJob(null); setLost(false); setStarting(true);
     try {
       // Authorize is the confirmation: the server stamps its time, then /shop accepts only this id.
       const token = parsed.confirm_token ?? "";
@@ -221,8 +244,11 @@ export default function TaskPage() {
                 </li>
               );
             })}
-            {job.status === "running" && <li className="active"><span className="dot" />Working…</li>}
+            {job.status === "running" && !lost && <li className="active"><span className="dot" />Working…</li>}
           </ol>
+          {lost && job.status === "running" && (
+            <div className="note-box" role="status">{LOST_RUN_NOTE} <Link href="/">Dispute queue</Link></div>
+          )}
           {job.status === "error" && <div className="error-box">{job.error}</div>}
           {job.status === "done" && job.result?.no_match && (
             <div className="note-box blocked-box">

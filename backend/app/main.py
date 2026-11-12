@@ -170,7 +170,9 @@ def shop_job(job_id: str) -> dict:
     """Progress of a background /shop run: status, events so far, and the result when done."""
     job = jobs.get(job_id)
     if job is None:
-        raise HTTPException(404, "no such run (runs are kept in memory and reset on restart)")
+        raise HTTPException(404, {"code": "job_unknown", "job_id": job_id,
+                                  "message": "No such run. Runs are kept in memory, so the server may have "
+                                             "restarted while it was running."})
     return job
 
 

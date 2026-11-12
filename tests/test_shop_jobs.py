@@ -57,8 +57,20 @@ def test_background_error_is_reported_not_raised():
     assert job["status"] == "error" and "max_tokens" in job["error"]
 
 
-def test_unknown_job_is_404():
-    assert TestClient(app).get("/shop/jobs/nope").status_code == 404
+def test_unknown_job_is_404_with_a_clear_json_error():
+    r = TestClient(app).get("/shop/jobs/nope")
+    assert r.status_code == 404
+    detail = r.json()["detail"]
+    assert detail["code"] == "job_unknown" and detail["job_id"] == "nope" and "restarted" in detail["message"]
+
+
+def test_job_lost_when_the_store_is_reset_mid_run():
+    client = TestClient(app)
+    with patch("backend.app.main.shop.buy", side_effect=fake_buy):
+        job_id = client.post("/shop", json={**confirmed_mandate(), "background": True}).json()["job_id"]
+        wait(client, job_id)
+    jobs._jobs.clear()  # what a restart does to the in-memory store
+    assert client.get(f"/shop/jobs/{job_id}").status_code == 404
 
 
 def test_rate_limit_applies_to_background_runs():
