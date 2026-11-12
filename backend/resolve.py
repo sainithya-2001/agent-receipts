@@ -145,11 +145,17 @@ def _resolve(dispute: dict[str, Any], *, paypal: PayPalClient | None = None, fil
         return result
 
     action = step["action"]
+    receipt = ledger.get_receipt(receipt_id)  # the verdict event just recorded (or found) is in it
+    verdict_event = _events(receipt, "dispute_verdict", dispute_id)[-1]
+    anchor = evidence.anchor_fields(receipt, verdict_event, ledger.verify_chain()["head_hash"])
     note = evidence.write_note(action, verdict, receipt, dispute, client=client) if action in NEEDS_NOTE else None
+    if note is not None:
+        note = evidence.anchored_note(note, receipt_id, anchor)  # code appends the hashes; PayPal receives them
     evidence.execute(paypal, dispute_id, action, note)
-    ledger.append_event(receipt_id, "dispute_response", {"dispute_id": dispute_id, "action": action, "note": note})
+    ledger.append_event(receipt_id, "dispute_response", {"dispute_id": dispute_id, "action": action, "note": note,
+                                                         "anchor": anchor})
     log.info("dispute %s: filed %s", dispute_id, action)
-    return {**result, "status": "filed", "filed": {"action": action, "note": note}}
+    return {**result, "status": "filed", "filed": {"action": action, "note": note, "anchor": anchor}}
 
 
 def rejudge(dispute: dict[str, Any], reason: str, *, paypal: PayPalClient | None = None,

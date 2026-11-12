@@ -314,3 +314,34 @@ def test_webhook_never_files_while_filing_disabled(monkeypatch):
     with patch("backend.app.main._handle_dispute") as handle:
         TestClient(app).post("/paypal/webhook", json=EVENT, headers=SIGNED)
     handle.assert_called_once_with("PP-D-1", False, "WH-1")
+
+
+def test_filed_note_carries_the_anchor_hashes_and_the_event_records_them(monkeypatch):
+    monkeypatch.setenv("FILING_ENABLED", "true")
+    rid = scenarios.log_receipt(scenarios.get_scenario("wrong_size"))
+    with patch("backend.agents.evidence.disputes") as api:
+        out = resolve.resolve(real_dispute(rid), paypal=MagicMock(), file=True,
+                              client=fake_claude("AGENT_ERROR", "AL-2", note="x" * 5000))
+    sent = api.accept_claim.call_args.args[2]
+    receipt = ledger.get_receipt(rid)
+    verdict_event = [e for e in receipt["events"] if e["kind"] == "dispute_verdict"][-1]
+    response = [e for e in receipt["events"] if e["kind"] == "dispute_response"][-1]
+    anchor = response["anchor"]
+    assert anchor["verdict_event_hash"] == verdict_event["hash"] and anchor["intent_hash"] == receipt["hash"]
+    # the head at filing is the record the dispute_response was chained after
+    assert anchor["chain_head_hash"] == response["prev_hash"]
+    assert len(sent) <= evidence.MAX_NOTE  # model text shortened, footer kept
+    for h in (anchor["intent_hash"], anchor["verdict_event_hash"], anchor["chain_head_hash"]):
+        assert h in sent
+    assert response["note"] == sent and out["filed"]["anchor"] == anchor
+    assert ledger.verify_chain()["ok"]
+
+
+def test_adjudicate_records_anchor_without_a_note(monkeypatch):
+    monkeypatch.setenv("FILING_ENABLED", "true")
+    rid = scenarios.log_receipt(scenarios.get_scenario("buyer_remorse"))
+    with patch("backend.agents.evidence.disputes") as api:
+        resolve.resolve(real_dispute(rid, links=("adjudicate",)), paypal=MagicMock(), file=True, client=fake_claude())
+    assert api.adjudicate.called
+    response = [e for e in ledger.get_receipt(rid)["events"] if e["kind"] == "dispute_response"][-1]
+    assert response["note"] is None and response["anchor"]["verdict_event_hash"]

@@ -292,7 +292,24 @@ function EventBody({ event, verdict, receipt }: { event: LedgerEvent; verdict?: 
       );
     }
     case "dispute_response":
-      return <><div>Filed <span className="mono">{e.action}</span> with PayPal</div>{tail}</>;
+      return (
+        <>
+          <div>Filed <span className="mono">{e.action}</span> with PayPal</div>
+          {e.anchor ? (
+            <div className="hash-line" style={{ marginTop: 6 }}>
+              <span>Dispute evidence anchored in PayPal</span>
+              <span>
+                {e.anchor.chain_head_hash}
+                {e.note ? "" : " (this step sends no note, so the hashes are recorded here only)"}
+                {" · verdict chain #"}{e.anchor.verdict_seq} {shortHash(e.anchor.verdict_event_hash, 16)}
+              </span>
+            </div>
+          ) : (
+            <div className="muted" style={{ fontSize: 12.5 }}>Filed before dispute anchoring: no hashes were sent with it.</div>
+          )}
+          {tail}
+        </>
+      );
     case "ledger_import":
       return <><div>Loaded from <span className="mono">{e.source}</span>. {e.note}</div>{tail}</>;
     default:

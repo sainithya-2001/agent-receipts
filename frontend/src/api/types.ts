@@ -139,6 +139,13 @@ export interface Verdict {
   rejudged?: { supersedes: number; reason: string };
 }
 
+export interface ResponseAnchor {
+  intent_hash: string;
+  verdict_event_hash: string;
+  verdict_seq: number;
+  chain_head_hash: string;
+}
+
 export interface NextStep {
   action: string | null;
   why: string;
@@ -150,7 +157,7 @@ export interface ResolveResult {
   status: "adjudicated" | "filed" | "no_receipt";
   verdict?: Verdict;
   next?: NextStep;
-  filed?: { action: string; note: string | null } | null;
+  filed?: { action: string; note: string | null; anchor?: ResponseAnchor } | null;
   filing_enabled?: boolean; // FILING_ENABLED on the backend; false = show the step, never file it
   why?: string;
 }

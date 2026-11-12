@@ -90,6 +90,28 @@ def write_note(action: str, verdict: dict[str, Any], receipt: dict[str, Any], di
     return note if len(note) <= MAX_NOTE else note[: MAX_NOTE - 1] + "…"
 
 
+def anchor_fields(receipt: dict[str, Any], verdict_event: dict[str, Any], chain_head: str) -> dict[str, Any]:
+    """The hashes a response is anchored to: the intent record, the verdict event it rests on, and the
+    ledger's head at the moment of filing (the next record, dispute_response, has it as prev_hash
+    unless another receipt was written in between)."""
+    return {"intent_hash": receipt["hash"], "verdict_event_hash": verdict_event["hash"],
+            "verdict_seq": verdict_event["seq"], "chain_head_hash": chain_head}
+
+
+def anchor_footer(receipt_id: str, anchor: dict[str, Any]) -> str:
+    return (f"\n\n[Proof of Intent anchor] receipt {receipt_id}; intent hash {anchor['intent_hash']}; "
+            f"verdict event (chain #{anchor['verdict_seq']}) {anchor['verdict_event_hash']}; "
+            f"ledger head at filing {anchor['chain_head_hash']}.")
+
+
+def anchored_note(note: str, receipt_id: str, anchor: dict[str, Any]) -> str:
+    """The note with the anchor footer appended by code (not written by the model), so the hashes are
+    always in what PayPal receives. The model's text is shortened to make room, never the footer."""
+    footer = anchor_footer(receipt_id, anchor)
+    room = MAX_NOTE - len(footer)
+    return (note if len(note) <= room else note[: room - 1] + "…") + footer
+
+
 def execute(paypal: PayPalClient, dispute_id: str, action: str, note: str | None) -> Any:
     if action == "accept_claim":
         return disputes.accept_claim(paypal, dispute_id, note)
