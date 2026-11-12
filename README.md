@@ -13,15 +13,7 @@ The lifecycle is **prevent → record → resolve**: a guard stops a purchase th
 
 ![Replay timeline with the deviating step highlighted](docs/screenshots/replay.png)
 
----
 
-## About this project
-
-I built Proof of Intent myself. I designed the architecture and the trust model: PayPal as an independent integrity witness (the receipt hash travels as the order's `invoice_id`), adjudication that works out the facts in code before any AI is involved and fails closed when integrity can't be checked, buyer-confirmed mandates, and the pre-payment guard. I integrated PayPal Orders, Vault, Captures, Disputes and Webhooks, and built the ledger, the adjudication pipeline, the MCP server and the merchant console.
-
-I validated it with automated tests, three external technical reviews whose findings I triaged and fixed, and live sandbox runs, including a real dispute that PayPal refunded.
-
----
 
 ## The problem
 
@@ -67,13 +59,6 @@ Each run (except the guard card, which never reaches PayPal) places a **real Pay
 
 The hosted demo **never files anything with PayPal** (`FILING_ENABLED=false`) and is rate-limited to protect the API budget.
 
-## Related work
-
-- **Agent Receipts protocol / Obsigna:** cryptographically verifiable, hash-chained records of agent actions, built for audit and accountability.
-- **Mastercard Verifiable Intent and Google AP2 (intent and cart mandates):** cryptographically verifiable authorization of what an agent may buy, checked at payment time.
-
-Proof of Intent differs in where the evidence is used. It treats the intent record as evidence once a PayPal dispute opens, rather than only as an audit log or an authorization check. It anchors the receipt hash in the PayPal order itself (`invoice_id`), so PayPal holds an independent fingerprint and later edits to the record are detectable. It decides fault with facts derived by code (integrity, field diff, listing injection) before the model is consulted, and the model can only choose among the verdicts those facts allow. Then it files the response through PayPal's Disputes API.
-
 ## How PayPal is used
 
 | PayPal capability | Used for |
@@ -109,8 +94,6 @@ flowchart LR
 ```
 
 **Stack:** Python 3.11, FastAPI, SQLite (append-only), Anthropic SDK, MCP Python SDK, Next.js + React, AG Grid, Render.
-
----
 
 ## Run it locally
 
@@ -201,10 +184,17 @@ The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_F
 - **Fail closed.** If a real dispute's receipt can't be checked against PayPal (no capture ID, failed lookup), there is no model call and the case goes to manual review. Only an order that exists but predates anchoring counts as "unanchored".
 - **Retries.** Stable request IDs make retries idempotent under PayPal's idempotency handling: order creation uses `order-<receipt_id>`, capture `capture-<order_id>`, and dispute filings an ID derived from the dispute and action. Webhook recovery is lightweight: a stuck event is reprocessed when PayPal redelivers it (after 5 minutes in `processing`); there is no background sweeper. Within one process, each dispute is resolved by one caller at a time.
 - **Prevent first, and say when it is off.** The guard checks the catalog price that checkout would charge, never a price the agent reports. Scenario runs record `guard: off` on the order event so a demo failure is never mistaken for a guarded platform.
+- **Buyer-confirmed mandates.** The agent is given the limits the buyer confirmed as fixed, and the receipt records exactly those limits with the server-side time of confirmation. The agent cannot widen them, so a purchase is judged against what the buyer authorized, not against the agent's own reading of the request.
 - **Mandates are bookkeeping, not evidence.** They are stored in the database outside the hash chain; the receipt records the confirmed mandate itself. A run that fails before any PayPal order can exist gives the mandate back so the buyer can retry; once ordering began it stays used. A guard-blocked attempt intentionally uses up its mandate too: retrying means confirming again.
 - **Re-judging after filing is a deliberate act.** A verdict can be superseded, but not once a response was filed unless forced with a reason, and a forced one is marked on the ledger.
 - **Filing is opt-in.** Nothing is sent to PayPal unless `FILING_ENABLED=true`. The hosted demo keeps it off.
 - **Keep it small.** Keyword (BM25) retrieval over 20 rules instead of an embedding model, SQLite instead of a database server, and plain Anthropic tool-use loops instead of an agent framework.
+
+## Testing and validation
+
+- **274 automated tests** (pytest) cover the hash chain, receipt validation, the PayPal client, the pre-payment guard, adjudication on every scenario with the model mocked, webhook handling, and the public route list. GitHub Actions CI runs them, the TypeScript check and the production frontend build on every push.
+- **External technical reviews:** three reviews, whose findings were triaged and fixed.
+- **Live PayPal sandbox runs:** real vaulted orders, anchor checks against PayPal's stored copy, and a real dispute that PayPal resolved in the buyer's favour with the refund issued.
 
 ## Current scope and next steps
 
@@ -216,9 +206,20 @@ The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_F
 - **Demo rules and catalog.** The 20 dispute rules are written for this demo, not PayPal policy; one sandbox merchant, 20 products.
 - **Free hosting.** The first load can take about a minute, and demo data resets when the server restarts.
 
+## Related work
+
+- **Agent Receipts protocol / Obsigna:** cryptographically verifiable, hash-chained records of agent actions, built for audit and accountability.
+- **Mastercard Verifiable Intent and Google AP2 (intent and cart mandates):** cryptographically verifiable authorization of what an agent may buy, checked at payment time.
+
+Proof of Intent differs in where the evidence is used. It treats the intent record as evidence once a PayPal dispute opens, rather than only as an audit log or an authorization check. It anchors the receipt hash in the PayPal order itself (`invoice_id`), so PayPal holds an independent fingerprint and later edits to the record are detectable. It decides fault with facts derived by code (integrity, field diff, listing injection) before the model is consulted, and the model can only choose among the verdicts those facts allow. Then it files the response through PayPal's Disputes API.
+
 ## Development
 
 Built with AI-assisted development (Claude Code); architecture, trust design and review decisions are my own, validated with automated tests, external reviews and live sandbox runs.
+
+## Author
+
+Designed and built by Sai Nithya Reddy Chandrapu.
 
 ## License
 
