@@ -261,7 +261,7 @@ def paypal_webhook(request: Request, background: BackgroundTasks, event: dict = 
         raise HTTPException(400, "webhook signature not verified")
     dispute_id = webhooks.dispute_id_of(event)
     event_id = event.get("id")
-    # PayPal redelivers events; handle each event id once. Checked after the signature, so only
+    # PayPal redelivers events; a done event is skipped, a stuck one is reprocessed on redelivery. Checked after the signature, so only
     # genuine events can use up an id.
     if event_id and not ledger.claim_event(event_id):
         return {"received": True, "duplicate": True, "event_type": event.get("event_type"),

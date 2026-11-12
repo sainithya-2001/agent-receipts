@@ -23,7 +23,7 @@ export const api = {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ request_text: requestText }),
     }),
-  // The confirm token comes from /mandate/parse and is kept in page memory only (a capability, not an identity).
+  // The confirm token comes from /mandate/parse and is kept in page memory only (a per-mandate capability, not a buyer identity or account control).
   confirmMandate: (mandateId: string, confirmToken: string) =>
     call<StoredMandate>(`/mandate/${encodeURIComponent(mandateId)}/confirm`, {
       method: "POST", headers: { "Content-Type": "application/json" },

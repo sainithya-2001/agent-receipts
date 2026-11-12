@@ -42,7 +42,7 @@ def _hash(token: str) -> str:
 
 
 def _check_token(row: Any, token: str | None) -> None:
-    """A per-mandate capability, not an identity: whoever holds the token returned by /mandate/parse may
+    """A per-mandate capability, not a buyer identity or account control: whoever holds the token returned by /mandate/parse may
     confirm and spend that mandate. Only its hash is stored; compared in constant time."""
     stored = row["token_hash"]
     if not token or not stored or not hmac.compare_digest(stored, _hash(token)):

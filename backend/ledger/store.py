@@ -116,8 +116,9 @@ STALE_AFTER_SECONDS = 300
 
 def claim_event(event_id: str, stale_after: int = STALE_AFTER_SECONDS) -> bool:
     """Start handling a webhook event. True for a new event, or for one still 'processing' after
-    `stale_after` seconds (the worker that took it probably died: reprocess). False for a repeat delivery
-    of an event that is done or is being handled right now."""
+    `stale_after` seconds (the worker that took it probably died: reprocess when PayPal redelivers it).
+    False for a repeat delivery of an event that is done or is being handled right now. Lightweight: nothing
+    sweeps stuck events in the background; recovery waits for a redelivery."""
     with write() as conn:
         if conn.execute("INSERT OR IGNORE INTO webhook_events (event_id) VALUES (?)", (event_id,)).rowcount == 1:
             return True

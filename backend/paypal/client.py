@@ -95,7 +95,7 @@ class PayPalClient:
         if files is None:
             hdrs["Content-Type"] = "application/json"
         if method.upper() == "POST":
-            # Makes retries of the same call safe on PayPal's side.
+            # A request id makes retries idempotent under PayPal's idempotency handling (callers pass a stable one).
             hdrs["PayPal-Request-Id"] = str(uuid.uuid4())
         hdrs.update(headers or {})
         resp = self.http.request(
