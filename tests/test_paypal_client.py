@@ -127,3 +127,17 @@ def test_setup_token_then_payment_token(client):
     assert json.loads(pt_route.calls.last.request.content) == {
         "payment_source": {"token": {"id": "ST1", "type": "SETUP_TOKEN"}}
     }
+
+
+@respx.mock
+def test_retried_order_create_and_capture_use_the_same_request_id(client):
+    mock_token(respx)
+    create = respx.post(f"{BASE}/v2/checkout/orders").mock(return_value=httpx.Response(201, json={"id": "O1"}))
+    capture = respx.post(f"{BASE}/v2/checkout/orders/O1/capture").mock(return_value=httpx.Response(201, json={}))
+    for _ in range(2):  # redirect path, then vaulted path, each retried
+        orders.create_order(client, "1.00", custom_id="rcpt_1", request_id="order-rcpt_1")
+        orders.create_vaulted_order(client, "1.00", "V1", custom_id="rcpt_1", request_id="order-rcpt_1")
+        orders.capture_order(client, "O1")
+    assert {c.request.headers["PayPal-Request-Id"] for c in create.calls} == {"order-rcpt_1"}
+    assert {c.request.headers["PayPal-Request-Id"] for c in capture.calls} == {"capture-O1"}
+
