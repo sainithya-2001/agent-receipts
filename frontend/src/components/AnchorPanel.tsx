@@ -11,6 +11,9 @@ export function AnchorPanel({ receipt }: { receipt: Receipt }) {
   const captureId = (receipt.events.find((e) => e.kind === "paypal_captured")?.capture_id as string | undefined) ?? null;
 
   const state = anchorState(anchor, failed);
+  // blocked by the guard and never ordered: the empty anchor is expected, not "predates anchoring"
+  const blockedNoOrder = receipt.events.some((e) => e.kind === "purchase_blocked") &&
+    !receipt.events.some((e) => e.kind === "paypal_order_created");
   const hashesDiffer = state === "mismatch" && anchor?.intent_hash !== anchor?.invoice_id;
   const customId = anchor?.custom_id ?? null;
   const customMatches = customId !== null && customId === receipt.receipt_id; // tick only on an exact match
@@ -22,7 +25,7 @@ export function AnchorPanel({ receipt }: { receipt: Receipt }) {
           <div className="anchor-state">{ANCHOR_LABEL[state]}</div>
         </div>
         <div className="anchor-note">
-          <p>{anchorSummary(state, anchor)}</p>
+          <p>{anchorSummary(state, anchor, blockedNoOrder)}</p>
           {state === "mismatch" && chain && (
             <p className="anchor-chain">
               {chain.ok
@@ -37,7 +40,7 @@ export function AnchorPanel({ receipt }: { receipt: Receipt }) {
         <dd className={`mono${hashesDiffer ? " bad" : ""}`}>{anchor?.intent_hash ?? "—"}</dd>
         <dt>PayPal invoice_id <em>stored with the order</em></dt>
         <dd className={`mono${hashesDiffer ? " bad" : ""}`}>
-          {anchor?.invoice_id ?? (anchor ? "none: order predates anchoring" : "—")}
+          {anchor?.invoice_id ?? (anchor && !blockedNoOrder ? "none: order predates anchoring" : "—")}
         </dd>
         <dt>Order id</dt>
         <dd className="mono">{anchor?.order_id ?? "—"}</dd>

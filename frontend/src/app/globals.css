@@ -309,6 +309,8 @@ table.diff td.bad-cell { color: var(--red); background: var(--red-wash); font-we
   display: flex; gap: 8px; align-items: baseline;
 }
 .tl-flag::before { content: "DEVIATION"; font-weight: 700; letter-spacing: 0.1em; background: var(--red); color: #fff; padding: 1px 6px; font-size: 10px; }
+.tl-row.good .tl-flag { color: var(--green); }
+.tl-row.good .tl-flag::before { content: "GUARD"; background: var(--green); }
 .tl-row.warning .tl-flag { color: var(--amber); }
 .tl-row.warning .tl-flag::before { content: "WARNING"; background: var(--amber); }
 .tl-notes { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
