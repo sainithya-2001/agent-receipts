@@ -20,7 +20,10 @@ export const ANCHOR_LABEL: Record<AnchorState, string> = {
   unavailable: "PayPal check unavailable",
 };
 
-export function anchorSummary(state: AnchorState, anchor: PayPalAnchor | null): string {
+export function anchorSummary(state: AnchorState, anchor: PayPalAnchor | null, blocked = false): string {
+  if (blocked && state === "not_anchored") {
+    return "The pre-payment guard blocked this purchase, so no PayPal order exists and nothing was charged. There is no hash at PayPal to compare.";
+  }
   switch (state) {
     case "match":
       return "PayPal holds the same hash this receipt has now. It was not changed after the purchase.";
