@@ -95,6 +95,36 @@ def test_failed_handling_releases_the_event_for_redelivery():
     assert ledger.claim_event("WH-9") is True
 
 
+def test_event_has_status_and_is_done_only_after_handling_succeeds():
+    from backend.ledger import store
+    ledger.claim_event("WH-5")
+    row = store.read("SELECT status, received_at FROM webhook_events WHERE event_id = 'WH-5'")[0]
+    assert row["status"] == "processing" and row["received_at"]
+    with patch("backend.app.main.resolve.resolve_by_id", return_value={"status": "x"}), patch("backend.app.main.PayPalClient"):
+        main._handle_dispute("PP-D-1", False, "WH-5")
+    assert store.read("SELECT status FROM webhook_events WHERE event_id = 'WH-5'")[0]["status"] == "done"
+    assert ledger.claim_event("WH-5", stale_after=0) is False  # done events are never reprocessed
+
+
+def test_stale_processing_event_is_reprocessed_but_a_fresh_one_is_not():
+    from backend.ledger import store
+    assert ledger.claim_event("WH-6") is True
+    assert ledger.claim_event("WH-6") is False  # redelivered while still being handled
+    with store.write() as conn:  # the worker died 6 minutes ago
+        conn.execute("UPDATE webhook_events SET received_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 minutes') "
+                     "WHERE event_id = 'WH-6'")
+    assert ledger.claim_event("WH-6") is True  # default window is 5 minutes
+    assert ledger.claim_event("WH-6") is False  # the timestamp was refreshed
+
+
+def test_four_minute_old_processing_event_is_still_a_duplicate():
+    from backend.ledger import store
+    ledger.claim_event("WH-7")
+    with store.write() as conn:
+        conn.execute("UPDATE webhook_events SET received_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-4 minutes')")
+    assert ledger.claim_event("WH-7") is False
+
+
 def test_ledger_chain_is_unaffected_by_event_bookkeeping():
     ledger.claim_event("WH-1")
     assert ledger.verify_chain()["ok"] is True
