@@ -1,6 +1,10 @@
 # Proof of Intent
 
+[![CI](https://github.com/sainithya-2001/agent-receipts/actions/workflows/ci.yml/badge.svg)](https://github.com/sainithya-2001/agent-receipts/actions/workflows/ci.yml)
+
 **The dispute layer for AI purchases on PayPal.** When an AI agent buys the wrong thing, Proof of Intent records what it was asked to do before the purchase, uses that record to decide who is at fault, and settles the dispute through PayPal.
+
+The lifecycle is **prevent → record → resolve**: a guard stops a purchase that breaks the buyer's confirmed limits before any money moves; a hash-anchored receipt records what the agent was asked and chose; and when a dispute still happens, the adjudicator settles it from that receipt.
 
 Built for the PayPal AI Hackathon: *Build what's next with PayPal and AI*.
 
@@ -19,10 +23,11 @@ Payment networks and merchants describe liability for agent purchases as an open
 
 ## What Proof of Intent does
 
-1. **Receipt before payment.** Before the shopping agent can pay, it must log a *receipt of intent*: the person's request, their limits (size, budget, category), every option the agent considered, its choice, and why. No receipt, no PayPal order.
-2. **Tamper-evident ledger.** Every receipt and PayPal event is SHA-256 hash-chained in an append-only ledger.
-3. **Anchored in PayPal.** The receipt's hash is sent as the PayPal order's `invoice_id`, so PayPal holds an independent fingerprint from the moment of payment. If anyone later edits the receipt, even rewriting the whole chain, the anchor check fails.
-4. **AI adjudication.** When the buyer opens a PayPal dispute, an adjudicator agent compares the receipt with what happened and assigns fault:
+1. **Prevent: a guard before payment.** On the public `/shop`, the agent's choice is checked against the limits the buyer confirmed (price and currency, size, category) *before* the PayPal order is created. A violation makes no PayPal call at all: a `purchase_blocked` event goes on the ledger and the replay timeline shows a green "Blocked before payment" frame. The "Break the agent" scenarios run with the guard **off**, as an agent platform without a guard, so the downstream dispute path can be shown; each says so.
+2. **Record: receipt before payment.** Before the shopping agent can pay, it must log a *receipt of intent*: the person's request, their limits (size, budget, category), every option the agent considered, its choice, and why. No receipt, no PayPal order.
+3. **Tamper-evident ledger.** Every receipt and PayPal event is SHA-256 hash-chained in an append-only ledger.
+4. **Anchored in PayPal.** The receipt's hash is sent as the PayPal order's `invoice_id`, so PayPal holds an independent fingerprint from the moment of payment. If anyone later edits the receipt, even rewriting the whole chain, the anchor check fails.
+5. **Resolve: AI adjudication.** When the buyer opens a PayPal dispute, an adjudicator agent compares the receipt with what happened and assigns fault:
 
    | Verdict | Meaning | Outcome |
    |---|---|---|
@@ -30,8 +35,8 @@ Payment networks and merchants describe liability for agent purchases as an open
    | `MERCHANT_ERROR` | Wrong item delivered, or the listing manipulated the agent (prompt injection) | Refund the buyer |
    | `BUYER_REMORSE` | The agent did exactly what was asked | Merchant submits evidence and wins |
 
-5. **Evidence agent.** It picks the next step from the actions PayPal currently offers on the dispute (accept claim, escalate, provide evidence) and writes the response.
-6. **Replay.** A timeline shows every step the agent took, with the step where things went wrong highlighted in red.
+6. **Evidence agent.** It picks the next step from the actions PayPal currently offers on the dispute (accept claim, escalate, provide evidence) and writes the response. Code appends the intent hash, the verdict event's hash and the ledger head at filing to every note sent to PayPal and records them in the `dispute_response` event, so the evidence PayPal holds is tied to the ledger too.
+7. **Replay.** A timeline shows every step the agent took, with the step where things went wrong highlighted in red.
 
 ### Why the AI doesn't decide alone
 
@@ -147,7 +152,7 @@ The browser calls `/api/*`, which Next forwards to `BACKEND_URL` (default `http:
 ```bash
 python -m pytest -q
 ```
-PayPal and Claude are mocked in tests, so no credentials are needed.
+PayPal and Claude are mocked in tests, so no credentials are needed. The same tests, the frontend typecheck and `next build` run on every push in GitHub Actions (`.github/workflows/ci.yml`).
 
 ### Useful commands
 ```bash
@@ -187,6 +192,9 @@ The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_F
 - **Injection must be shown to matter.** A listing that tries to instruct the agent only shifts fault to the merchant if the agent actually saw that listing and the violated field is the one the text told it to override. Otherwise the case goes to a person.
 - **Fail closed.** If a real dispute's receipt can't be checked against PayPal (no capture ID, failed lookup), there is no model call and the case goes to manual review. Only an order that exists but predates anchoring counts as "unanchored".
 - **Safe to repeat.** Filing calls use a `PayPal-Request-Id` derived from the dispute and action, webhook events are handled once per event ID, and each dispute is resolved by one caller at a time.
+- **Prevent first, and say when it is off.** The guard checks the catalog price that checkout would charge, never a price the agent reports. Scenario runs record `guard: off` on the order event so a demo failure is never mistaken for a guarded platform.
+- **Mandates are bookkeeping, not evidence.** They are stored in the database outside the hash chain; the receipt records the confirmed mandate itself. A run that fails before any PayPal order can exist gives the mandate back so the buyer can retry; once ordering began it stays used.
+- **Re-judging after filing is a deliberate act.** A verdict can be superseded, but not once a response was filed unless forced with a reason, and a forced one is marked on the ledger.
 - **Filing is opt-in.** Nothing is sent to PayPal unless `FILING_ENABLED=true`. The hosted demo keeps it off.
 - **Keep it small.** Keyword (BM25) retrieval over 20 rules instead of an embedding model, SQLite instead of a database server, and plain Anthropic tool-use loops instead of an agent framework.
 
