@@ -281,3 +281,31 @@ def test_a_mandate_from_before_tokens_cannot_be_confirmed():
         conn.execute("UPDATE mandates SET token_hash = NULL WHERE mandate_id = ?", (m["mandate_id"],))
     with pytest.raises(mandates.MandateForbidden):
         mandates.confirm(m["mandate_id"], m["confirm_token"])
+
+
+# --- a refusal is retried once ---
+
+def refusal_reply():
+    return SimpleNamespace(content=[], stop_reason="refusal", usage=usage(), stop_details="x")
+
+
+def test_shopping_retries_a_refusal_once_then_succeeds():
+    submit = {"options_considered": [{"product_id": "p_03", "price": 109.99, "size": "8", "note": "fits"}],
+              "chosen_product_id": "p_03", "chosen_size": "8", "decision_summary": "Best fit."}
+    c = MagicMock()
+    c.messages.create.side_effect = [refusal_reply(), agent_reply(tool_use("t1", "submit_choice", submit))]
+    result = shopping.run(REQUEST, client=c, constraints=CONFIRMED, confirmed_at="2026-11-12T00:00:00+00:00")
+    assert result["agent_run"]["chosen_product_id"] == "p_03"
+    assert result["mandate"]["constraints"] == CONFIRMED
+    assert c.messages.create.call_count == 2
+    first, second = (call.kwargs["messages"] for call in c.messages.create.call_args_list)
+    assert first is not second and first == [second[0]]  # a fresh conversation (the first attempt added nothing), same request and constraints
+
+
+def test_shopping_gives_up_after_a_second_refusal():
+    from backend.agents.llm import RefusalError
+    c = MagicMock()
+    c.messages.create.side_effect = [refusal_reply(), refusal_reply(), refusal_reply()]
+    with pytest.raises(RefusalError):
+        shopping.run(REQUEST, client=c, constraints=CONFIRMED, confirmed_at="2026-11-12T00:00:00+00:00")
+    assert c.messages.create.call_count == 2  # exactly one retry

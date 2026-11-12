@@ -12,7 +12,7 @@ from typing import Any
 
 import anthropic
 
-from backend.agents.llm import create_message
+from backend.agents.llm import RefusalError, create_message
 from backend.catalog import get_product, listing_snapshot, search_products
 from backend.config import get_settings
 
@@ -166,8 +166,21 @@ def run(request_text: str, client: anthropic.Anthropic | None = None,
     """Run the agent on a request. Returns {"mandate": ..., "agent_run": ...} per the receipt schema.
 
     constraints (confirmed by the buyer, with confirmed_at) are fixed: the agent is told them, can't
-    change them, and the receipt's mandate.constraints are exactly these."""
+    change them, and the receipt's mandate.constraints are exactly these.
+
+    A model refusal is retried once from scratch (same request and constraints, a fresh conversation):
+    refusals here come from a classifier that is occasionally wrong. A second refusal is raised."""
     client = client or anthropic.Anthropic()
+    try:
+        return _run_once(request_text, client, on_step, constraints, confirmed_at)
+    except RefusalError:
+        log.warning("shopping agent refused; retrying once with a fresh call")
+        return _run_once(request_text, client, on_step, constraints, confirmed_at)
+
+
+def _run_once(request_text: str, client: anthropic.Anthropic,
+              on_step: Callable[[dict[str, Any]], None] | None,
+              constraints: dict[str, Any] | None, confirmed_at: str | None) -> dict[str, Any]:
     content = request_text
     tools = TOOLS
     if constraints is not None:
