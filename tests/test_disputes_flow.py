@@ -102,6 +102,35 @@ def test_plan(verdict, dispute, done, action):
     assert evidence.plan(dispute, verdict, done)["action"] == action
 
 
+# A crash after a successful PayPal call but before the ledger write: the next run must read the step
+# from PayPal's own dispute record, never re-file it, and say what it is waiting for.
+
+def after_evidence(*rels):
+    return {"status": "UNDER_REVIEW", "dispute_life_cycle_stage": "CHARGEBACK",
+            "evidences": [{"evidence_type": "OTHER", "source": "SUBMITTED_BY_SELLER"}],
+            "links": [{"rel": r} for r in rels]}
+
+
+def test_lost_ledger_write_after_provide_evidence_waits_for_adjudicate_not_evidence():
+    step = evidence.plan(after_evidence("provide_supporting_info"), REMORSE, set())
+    assert step["action"] is None and step["why"] == "Waiting for PayPal to offer adjudicate."
+    assert evidence.plan(after_evidence("adjudicate"), REMORSE, set())["action"] == "adjudicate"
+
+
+def test_observed_done_uses_only_positive_evidence_from_paypal():
+    assert evidence.observed_done(after_evidence()) == {"escalate", "provide_evidence"}
+    assert evidence.observed_done({"dispute_life_cycle_stage": "INQUIRY"}) == set()
+    buyer_only = {"dispute_life_cycle_stage": "INQUIRY", "evidences": [{"source": "SUBMITTED_BY_BUYER"}]}
+    assert evidence.observed_done(buyer_only) == set()
+
+
+def test_lost_ledger_write_after_accept_claim_never_refiles():
+    gone = links("provide_supporting_info", status="UNDER_REVIEW")  # accept_claim no longer offered
+    step = evidence.plan(gone, REFUND, set())
+    assert step["action"] is None and "nothing is re-filed" in step["why"]
+    assert evidence.plan(links(status="RESOLVED"), REFUND, set())["action"] is None
+
+
 # --- the flow ---
 
 def test_scenario_flow_records_events_and_never_files():

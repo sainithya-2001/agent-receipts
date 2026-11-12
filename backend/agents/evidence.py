@@ -40,13 +40,35 @@ def offered(dispute: dict[str, Any]) -> set[str]:
     return {link["rel"] for link in dispute.get("links", [])}
 
 
+# Stages that only exist once the inquiry was escalated (by us or the buyer): escalate is behind us.
+_PAST_INQUIRY = {"CHARGEBACK", "PRE_ARBITRATION", "ARBITRATION"}
+
+
+def observed_done(dispute: dict[str, Any]) -> set[str]:
+    """Steps PayPal's own dispute record shows already happened, whatever the ledger says.
+
+    Covers a crash between a successful PayPal call and the ledger write: the next run reads the
+    dispute from PayPal, sees the step was taken, and moves on instead of waiting for a link PayPal
+    will never offer again. Only positive evidence counts; a missing field proves nothing."""
+    done = set()
+    if dispute.get("dispute_life_cycle_stage") in _PAST_INQUIRY:
+        done.add("escalate")
+    if any(e.get("source") == "SUBMITTED_BY_SELLER" for e in dispute.get("evidences") or []):
+        done.add("provide_evidence")
+    return done
+
+
 def plan(dispute: dict[str, Any], verdict: dict[str, Any], done: set[str]) -> dict[str, Any]:
-    """The next PayPal step: {"action": str | None, "why": str}."""
+    """The next PayPal step: {"action": str | None, "why": str}.
+
+    `done` is what the ledger recorded; PayPal's own state (observed_done) is added to it, so a step
+    is never filed twice. A step PayPal no longer offers is never filed at all."""
     if verdict.get("status") != "decided":
         return {"action": None, "why": "No decided verdict; manual review."}
     if dispute.get("status") == "RESOLVED":
         return {"action": None, "why": "Dispute is resolved."}
     rels = offered(dispute)
+    done = set(done) | observed_done(dispute)
     if verdict["action"] == "accept_claim":
         steps = ["accept_claim"]
     else:
@@ -58,6 +80,11 @@ def plan(dispute: dict[str, Any], verdict: dict[str, Any], done: set[str]) -> di
             return {"action": step, "why": f"PayPal offers {step}."}
         if rels & set(steps[i + 1:]):
             continue  # PayPal is past this step (e.g. already a claim, so no escalate)
+        if step == "accept_claim":
+            # PayPal is not offering accept_claim: if it was already filed (and the ledger
+            # write was lost), PayPal resolves the dispute shortly and the next run records that.
+            return {"action": None, "why": "PayPal does not offer accept_claim now. If it was already "
+                                           "filed, PayPal will resolve the dispute; nothing is re-filed."}
         return {"action": None, "why": f"Waiting for PayPal to offer {step}."}
     return {"action": None, "why": "All steps filed."}
 
