@@ -111,7 +111,8 @@ export function buildTimeline(receipt: Receipt, catalog: Product[], disputeId?: 
   const unchecked = verdict?.integrity.check === "anchor_unavailable"; // PayPal couldn't be reached: not evidence of tampering
   const altered = verdict?.integrity.status === "failed" && !unchecked;
   frames.push({
-    key: "signed", phase: "Ledger", stamp: "", at: receipt.created_at, title: "Receipt of intent logged (hash-anchored)",
+    key: "signed", phase: "Ledger", stamp: "", at: receipt.created_at, title: receipt.events.some((e) => e.kind === "paypal_order_created")
+      ? "Receipt of intent logged (hash-anchored)" : "Receipt of intent logged",
     tone: altered ? "deviation" : "plain", notes: [], body: { type: "signed", receipt },
     flag: altered
       ? `${verdict!.integrity.check === "chain" ? "Ledger chain broken" : "Altered after purchase"}: ${verdict!.integrity.note}`

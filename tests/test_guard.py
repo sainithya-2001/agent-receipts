@@ -259,3 +259,13 @@ def test_agent_prompt_keeps_the_wording_that_does_not_trigger_refusals():
     from backend.agents import shopping
     assert "say so briefly in decision_summary" in shopping.SYSTEM
     assert "explain why" not in shopping.SYSTEM.lower()
+
+
+def test_anchor_check_of_a_blocked_receipt_still_reports_the_recomputed_intent_hash():
+    from backend import ledger
+    from backend.ledger.anchor import intent_hash
+    rid = ledger.log_intent({"request_text": "s", "constraints": {"size": "8", "max_price": 120}},
+                            {"model": "m", "options_considered": [], "chosen_product_id": "p_04",
+                             "chosen_size": "8", "reasoning": "r", "steps": []})
+    out = ledger.verify_receipt_against_paypal(rid, None)
+    assert out["ok"] is False and out["order_id"] is None and out["intent_hash"] == intent_hash(rid)

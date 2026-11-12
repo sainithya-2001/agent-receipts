@@ -1,9 +1,10 @@
 import type { PayPalAnchor } from "./types";
 
-export type AnchorState = "loading" | "match" | "mismatch" | "not_anchored" | "unavailable";
+export type AnchorState = "loading" | "no_payment" | "match" | "mismatch" | "not_anchored" | "unavailable";
 
 /** The one word the panel shows. mismatch means PayPal holds a hash (or a receipt id) that is not this receipt's. */
-export function anchorState(anchor: PayPalAnchor | null, failed: boolean): AnchorState {
+export function anchorState(anchor: PayPalAnchor | null, failed: boolean, blockedNoOrder = false): AnchorState {
+  if (blockedNoOrder) return "no_payment"; // the guard stopped it: nothing to anchor, and nothing went wrong
   if (failed) return "unavailable";
   if (!anchor) return "loading";
   if (anchor.ok) return "match";
@@ -14,6 +15,7 @@ export function anchorState(anchor: PayPalAnchor | null, failed: boolean): Ancho
 
 export const ANCHOR_LABEL: Record<AnchorState, string> = {
   loading: "Checking PayPal…",
+  no_payment: "No payment",
   match: "Match",
   mismatch: "Mismatch",
   not_anchored: "Not anchored",
@@ -21,7 +23,7 @@ export const ANCHOR_LABEL: Record<AnchorState, string> = {
 };
 
 export function anchorSummary(state: AnchorState, anchor: PayPalAnchor | null, blocked = false): string {
-  if (blocked && state === "not_anchored") {
+  if (blocked) {
     return "The pre-payment guard blocked this purchase, so no PayPal order exists and nothing was charged. There is no hash at PayPal to compare.";
   }
   switch (state) {

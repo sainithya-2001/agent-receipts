@@ -358,13 +358,13 @@ table.options .bad { color: var(--red); }
 
 /* ---- PayPal anchor panel ---- */
 .anchor { margin: 20px 0 0; border: 1px solid var(--ink); background: var(--card); border-left-width: 8px; }
-.anchor.match { border-left-color: var(--green); }
+.anchor.match, .anchor.no_payment { border-left-color: var(--green); }
 .anchor.not_anchored { border-left-color: var(--rule-strong); }
 .anchor.unavailable { border-left-color: var(--amber); }
 .anchor.mismatch { border-color: var(--red); background: var(--red-wash); border-left-color: var(--red); }
 .anchor-head { display: flex; gap: 28px; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--rule); }
 .anchor-state { font-size: 34px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; line-height: 1.1; margin-top: 2px; }
-.anchor.match .anchor-state { color: var(--green); }
+.anchor.match .anchor-state, .anchor.no_payment .anchor-state { color: var(--green); }
 .anchor.mismatch .anchor-state { color: var(--red); }
 .anchor.unavailable .anchor-state { color: var(--amber); }
 .anchor.not_anchored .anchor-state, .anchor.loading .anchor-state { color: var(--muted); }

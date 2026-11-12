@@ -30,12 +30,12 @@ def verify_receipt_against_paypal(
     receipt = get_receipt(receipt_id)
     if receipt is None:
         return {**result, "error": "receipt not in the ledger"}
+    result["intent_hash"] = intent_hash(receipt_id)  # recomputed locally, so it exists even with no order
     if capture_id is None and order_id is None:
         created = [e for e in receipt["events"] if e["kind"] == "paypal_order_created"]
         if not created:
             return {**result, "error": "receipt has no PayPal order"}
         order_id = created[0]["order_id"]
-    result["intent_hash"] = intent_hash(receipt_id)
 
     if capture_id is not None:
         held = payments.get_capture(paypal, capture_id)

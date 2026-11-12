@@ -10,10 +10,10 @@ export function AnchorPanel({ receipt }: { receipt: Receipt }) {
   const { anchor, failed, chain } = useContext(AnchorCtx);
   const captureId = (receipt.events.find((e) => e.kind === "paypal_captured")?.capture_id as string | undefined) ?? null;
 
-  const state = anchorState(anchor, failed);
-  // blocked by the guard and never ordered: the empty anchor is expected, not "predates anchoring"
+  // blocked by the guard and never ordered: nothing to anchor, and nothing went wrong
   const blockedNoOrder = receipt.events.some((e) => e.kind === "purchase_blocked") &&
     !receipt.events.some((e) => e.kind === "paypal_order_created");
+  const state = anchorState(anchor, failed, blockedNoOrder);
   const hashesDiffer = state === "mismatch" && anchor?.intent_hash !== anchor?.invoice_id;
   const customId = anchor?.custom_id ?? null;
   const customMatches = customId !== null && customId === receipt.receipt_id; // tick only on an exact match
@@ -37,10 +37,11 @@ export function AnchorPanel({ receipt }: { receipt: Receipt }) {
       </div>
       <dl className="anchor-grid">
         <dt>Intent hash <em>recomputed from the stored receipt</em></dt>
-        <dd className={`mono${hashesDiffer ? " bad" : ""}`}>{anchor?.intent_hash ?? "—"}</dd>
+        <dd className={`mono${hashesDiffer ? " bad" : ""}`}>{anchor?.intent_hash ?? (blockedNoOrder ? receipt.hash : "—")}</dd>
+        {!blockedNoOrder && (<>
         <dt>PayPal invoice_id <em>stored with the order</em></dt>
         <dd className={`mono${hashesDiffer ? " bad" : ""}`}>
-          {anchor?.invoice_id ?? (anchor && !blockedNoOrder ? "none: order predates anchoring" : "—")}
+          {anchor?.invoice_id ?? (anchor ? "none: order predates anchoring" : "—")}
         </dd>
         <dt>Order id</dt>
         <dd className="mono">{anchor?.order_id ?? "—"}</dd>
@@ -51,6 +52,7 @@ export function AnchorPanel({ receipt }: { receipt: Receipt }) {
           {customId ?? "—"}{customMatches ? "  ✓" : ""}
           {customId !== null && !customMatches ? "  ✗ not this receipt" : ""}
         </dd>
+        </>)}
       </dl>
     </section>
   );
