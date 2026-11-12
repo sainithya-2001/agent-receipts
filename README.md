@@ -24,7 +24,7 @@ Payment networks and merchants describe liability for agent purchases as an open
 ## What Proof of Intent does
 
 1. **Prevent: a guard before payment.** On the public `/shop`, the agent's choice is checked against the limits the buyer confirmed (price and currency, size, category) *before* the PayPal order is created. A violation makes no PayPal call at all: a `purchase_blocked` event goes on the ledger and the replay timeline shows a green "Blocked before payment" frame. The "Break the agent" scenarios run with the guard **off**, as an agent platform without a guard, so the downstream dispute path can be shown; each says so.
-2. **Record: receipt before payment.** Before the shopping agent can pay, it must log a *receipt of intent*: the person's request, their limits (size, budget, category), every option the agent considered, its choice, and why. No receipt, no PayPal order.
+2. **Record: receipt before payment.** Before the shopping agent can pay, it must log a *receipt of intent*: the buyer-confirmed mandate (request and limits: size, budget, category), the agent's recorded tool calls and the catalog results it saw, the shortlist and decision summary the agent reports, and a snapshot of the chosen listing. PayPal events are appended after. No receipt, no PayPal order.
 3. **Tamper-evident ledger.** Every receipt and PayPal event is SHA-256 hash-chained in an append-only ledger.
 4. **Anchored in PayPal.** The receipt's hash is sent as the PayPal order's `invoice_id`, so PayPal holds an independent fingerprint from the moment of payment. If anyone later edits the receipt, even rewriting the whole chain, the anchor check fails.
 5. **Resolve: AI adjudication.** When the buyer opens a PayPal dispute, an adjudicator agent compares the receipt with what happened and assigns fault:
@@ -192,7 +192,7 @@ The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_F
 
 ## Testing and validation
 
-- **274 automated tests** (pytest) cover the hash chain, receipt validation, the PayPal client, the pre-payment guard, adjudication on every scenario with the model mocked, webhook handling, and the public route list. GitHub Actions CI runs them, the TypeScript check and the production frontend build on every push.
+- **286 automated tests** (pytest) cover the hash chain, receipt validation, the PayPal client, the pre-payment guard, adjudication on every scenario with the model mocked, webhook handling, and the public route list. GitHub Actions CI runs them, the TypeScript check and the production frontend build on every push.
 - **External technical reviews:** three reviews, whose findings were triaged and fixed.
 - **Live PayPal sandbox runs:** real vaulted orders, anchor checks against PayPal's stored copy, and a real dispute that PayPal resolved in the buyer's favour with the refund issued.
 
@@ -202,6 +202,7 @@ The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_F
 - **Disputes are opened by the buyer.** PayPal doesn't let a merchant app open disputes, so live disputes start in PayPal's buyer interface. The "Break the agent" cards use scripted agent decisions with real sandbox orders, so each failure is reproducible.
 - **No user accounts yet.** `/mandate/parse` returns a random confirm token (only its hash is stored), and confirming or spending a mandate requires it, so a leaked mandate id alone is useless. The token is a per-mandate capability, not a buyer identity or account control: whoever holds it can use that mandate, and nothing says who the buyer is. *Next:* real accounts, with the mandate bound to a signed-in buyer.
 - **Tamper-evident, not signed.** A receipt shows the record hasn't changed since purchase, checked against PayPal's stored copy. The server records the buyer's confirmation step, but a receipt isn't a buyer signature and doesn't verify who typed the request. *Next:* accept signed authorizations such as AP2 mandates or Mastercard Verifiable Intent.
+- **What a receipt does and doesn't establish.** The mandate, the agent's tool calls, the chosen listing snapshot and the PayPal events are recorded facts. The shortlist and decision summary are what the agent *reported*; the hash shows they haven't changed since purchase, not that they are true or complete, and tool-call steps store result ids rather than full responses. The facts that limit the verdict come from the mandate, the agent's recorded choice and tool calls, the listing snapshot and PayPal; the agent's own summary reaches the AI only as context.
 - **Injection attribution is evidence-based**, not a formal proof: what the agent saw and what the injected text told it to override. Unclear cases go to manual review.
 - **Demo rules and catalog.** The 20 dispute rules are written for this demo, not PayPal policy; one sandbox merchant, 20 products.
 - **Free hosting.** The first load can take about a minute, and demo data resets when the server restarts.
