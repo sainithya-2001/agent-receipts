@@ -13,7 +13,7 @@ from backend.agents.adjudicator import AdjudicationError, listing_injection
 from backend.agents import mandate
 from backend.agents.evidence import EvidenceError
 from backend.agents.llm import RefusalError
-from backend.agents.shopping import ShoppingError
+from backend.agents.shopping import NoProductPicked, ShoppingError
 from backend.config import get_settings
 from backend.ledger import LedgerError
 from backend.paypal import webhooks
@@ -157,6 +157,8 @@ def _describe_shop_error(exc: Exception) -> str:
         return f"PayPal rejected the order ({exc.status}, debug id {exc.debug_id})."
     if isinstance(exc, RefusalError):
         return SHOP_REFUSED
+    if isinstance(exc, NoProductPicked):
+        return NoProductPicked.MESSAGE
     if isinstance(exc, (ShoppingError, ledger.InvalidReceipt)):
         return f"{exc} Nothing was charged; you can authorize again."
     if isinstance(exc, checkout.CheckoutError):

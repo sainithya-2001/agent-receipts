@@ -120,6 +120,14 @@ class ShoppingError(RuntimeError):
     pass
 
 
+class NoProductPicked(ShoppingError):
+    """The agent finished without choosing a product although the catalog has one that fits the limits."""
+    MESSAGE = "The agent didn't pick a product. Nothing was charged; try again."
+
+    def __init__(self) -> None:
+        super().__init__(self.MESSAGE)
+
+
 def _run_catalog_tool(name: str, args: dict[str, Any]) -> Any:
     if name == "search_products":
         return search_products(
