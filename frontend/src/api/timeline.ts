@@ -50,7 +50,7 @@ const EVENT_TITLES: Record<string, string> = {
   purchase_blocked: "Blocked before payment",
   paypal_order_created: "PayPal order created",
   paypal_captured: "Payment captured",
-  paypal_cancelled: "Buyer cancelled at PayPal",
+  paypal_cancelled: "Buyer cancelled at PayPal (confirmed with PayPal: order never approved)",
   ledger_import: "System note: receipt restored to the ledger",
   dispute_opened: "Buyer opened a dispute",
   dispute_verdict: "Adjudicator verdict",

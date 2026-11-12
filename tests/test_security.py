@@ -72,25 +72,78 @@ def test_normal_paypal_ids_still_pass():
         assert TestClient(app).get("/paypal/cancel", params={"token": ok}).status_code == 200
 
 
-def test_cancel_cannot_rewrite_a_captured_order():
+def _receipt_with_order(order_id, *captured):
     rid = ledger.log_intent(
         {"request_text": "x", "constraints": {"category": "shoes", "size": "8", "max_price": 120, "currency": "USD"}},
         {"model": "m", "options_considered": [], "chosen_product_id": "p_03", "reasoning": "r"})
-    ledger.append_event(rid, "paypal_order_created", {"order_id": "ORD1", "status": "COMPLETED"})
-    ledger.append_event(rid, "paypal_captured", {"order_id": "ORD1", "status": "COMPLETED", "capture_id": "C1"})
+    ledger.append_event(rid, "paypal_order_created", {"order_id": order_id, "status": "PAYER_ACTION_REQUIRED"})
+    if captured:
+        ledger.append_event(rid, "paypal_captured", {"order_id": order_id, "status": "COMPLETED", "capture_id": "C1"})
+    return rid
+
+
+def _paypal_order(mock, order_id, status, custom_id):
+    mock.post(f"{BASE}/v1/oauth2/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "t", "expires_in": 3600}))
+    return mock.get(f"{BASE}/v2/checkout/orders/{order_id}").mock(return_value=httpx.Response(
+        200, json={"id": order_id, "status": status, "purchase_units": [{"custom_id": custom_id}]}))
+
+
+def _cancelled(rid):
+    return [e for e in ledger.get_receipt(rid)["events"] if e["kind"] == "paypal_cancelled"]
+
+
+def test_cancel_cannot_rewrite_a_captured_order():
+    rid = _receipt_with_order("ORD1", True)
     before = len(ledger.get_receipt(rid)["events"])
-    r = TestClient(app).get("/paypal/cancel", params={"token": "ORD1"})
-    assert r.status_code == 200 and r.json()["receipt_id"] == rid
+    with respx.mock(assert_all_called=False) as paypal:
+        any_call = paypal.route().mock(return_value=httpx.Response(200, json={}))
+        r = TestClient(app).get("/paypal/cancel", params={"token": "ORD1"})
+        assert not any_call.called  # a captured order needs no PayPal check
+    assert r.status_code == 200 and r.json()["receipt_id"] == rid and r.json()["status"] == "ALREADY_CAPTURED"
     assert len(ledger.get_receipt(rid)["events"]) == before  # nothing was added to a paid order
 
-    rid2 = ledger.log_intent(
-        {"request_text": "y", "constraints": {"category": "shoes", "size": "8", "max_price": 120, "currency": "USD"}},
-        {"model": "m", "options_considered": [], "chosen_product_id": "p_03", "reasoning": "r"})
-    ledger.append_event(rid2, "paypal_order_created", {"order_id": "ORD2", "status": "CREATED"})
-    for _ in range(3):
-        TestClient(app).get("/paypal/cancel", params={"token": "ORD2"})
-    cancelled = [e for e in ledger.get_receipt(rid2)["events"] if e["kind"] == "paypal_cancelled"]
-    assert len(cancelled) == 1  # a real cancel is recorded once
+
+def test_cancel_is_recorded_once_after_paypal_confirms_the_order_was_never_approved():
+    rid = _receipt_with_order("ORD2")
+    with respx.mock(assert_all_called=False) as paypal:
+        get = _paypal_order(paypal, "ORD2", "PAYER_ACTION_REQUIRED", rid)
+        bodies = [TestClient(app).get("/paypal/cancel", params={"token": "ORD2"}).json() for _ in range(3)]
+        assert get.call_count == 1  # repeats stop at the ledger
+    assert bodies[0]["status"] == "CANCELLED_BY_BUYER" and bodies[0]["recorded"] is True
+    assert all(b["status"] == "ALREADY_RECORDED" for b in bodies[1:])
+    [event] = _cancelled(rid)
+    assert event["paypal_status"] == "PAYER_ACTION_REQUIRED" and event["verified_with_paypal"] is True
+
+
+@pytest.mark.parametrize("status", ["APPROVED", "COMPLETED"])
+def test_cancel_url_cannot_record_a_cancellation_paypal_disagrees_with(status):
+    rid = _receipt_with_order("ORD3")
+    with respx.mock(assert_all_called=False) as paypal:
+        _paypal_order(paypal, "ORD3", status, rid)
+        body = TestClient(app).get("/paypal/cancel", params={"token": "ORD3"}).json()
+    assert body["status"] == "NOT_CANCELLED" and body["recorded"] is False and body["paypal_status"] == status
+    assert _cancelled(rid) == []
+
+
+def test_cancel_needs_paypals_order_to_carry_this_receipt():
+    rid = _receipt_with_order("ORD4")
+    with respx.mock(assert_all_called=False) as paypal:
+        _paypal_order(paypal, "ORD4", "CREATED", "rcpt_someone_else")
+        body = TestClient(app).get("/paypal/cancel", params={"token": "ORD4"}).json()
+    assert body["status"] == "UNVERIFIED" and body["recorded"] is False
+    assert _cancelled(rid) == []
+
+
+def test_cancel_records_nothing_when_paypal_cannot_be_reached():
+    rid = _receipt_with_order("ORD5")
+    with respx.mock(assert_all_called=False) as paypal:
+        paypal.post(f"{BASE}/v1/oauth2/token").mock(
+            return_value=httpx.Response(200, json={"access_token": "t", "expires_in": 3600}))
+        paypal.get(f"{BASE}/v2/checkout/orders/ORD5").mock(return_value=httpx.Response(500, json={}))
+        body = TestClient(app).get("/paypal/cancel", params={"token": "ORD5"}).json()
+    assert body["status"] == "UNVERIFIED" and body["recorded"] is False
+    assert _cancelled(rid) == []
 
 
 def test_server_errors_do_not_leak_details_or_secrets():
