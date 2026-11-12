@@ -29,6 +29,10 @@
       "value": ""
     },
     {
+      "key": "confirm_token",
+      "value": ""
+    },
+    {
       "key": "job_id",
       "value": ""
     },
@@ -111,6 +115,7 @@
             "exec": [
               "const d = pm.response.json();",
               "pm.collectionVariables.set(\"mandate_id\", d.mandate_id);",
+              "pm.collectionVariables.set(\"confirm_token\", d.confirm_token);",
               "pm.test(\"unconfirmed mandate\", () => pm.expect(d.confirmed_by_buyer_at).to.eql(null));"
             ]
           }
@@ -121,7 +126,12 @@
       "name": "2. Confirm the mandate",
       "request": {
         "method": "POST",
-        "header": [],
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
         "url": {
           "raw": "{{base_url}}/mandate/{{mandate_id}}/confirm",
           "host": [
@@ -133,7 +143,11 @@
             "confirm"
           ]
         },
-        "description": "The buyer's confirmation: the server stamps its own time and locks the constraints. Confirming again returns the same record."
+        "description": "The buyer's confirmation: the server stamps its own time and locks the constraints. Needs the confirm_token from step 1 (missing or wrong: 403). Confirming again returns the same record.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"confirm_token\": \"{{confirm_token}}\"\n}"
+        }
       },
       "event": [
         {
@@ -170,7 +184,7 @@
         "description": "Accepts only a confirmed, unused mandate_id: free text or constraints are 422, an unconfirmed mandate 422, an unknown id 404, a reused one 409. Places a real sandbox order and calls Claude. Rate limited.",
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"mandate_id\": \"{{mandate_id}}\",\n  \"background\": true\n}",
+          "raw": "{\n  \"mandate_id\": \"{{mandate_id}}\",\n  \"confirm_token\": \"{{confirm_token}}\",\n  \"background\": true\n}",
           "options": {
             "raw": {
               "language": "json"

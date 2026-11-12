@@ -145,9 +145,10 @@ def test_parse_stores_the_mandate_unconfirmed():
 
 def test_unconfirmed_mandate_is_rejected_by_shop():
     client = TestClient(app)
-    mandate_id = parsed(client)["mandate_id"]
+    body = parsed(client)
+    mandate_id = body["mandate_id"]
     with patch("backend.app.main.shop.buy") as buy:
-        r = client.post("/shop", json={"mandate_id": mandate_id})
+        r = client.post("/shop", json={"mandate_id": mandate_id, "confirm_token": body["confirm_token"]})
     assert r.status_code == 422 and "confirmed" in r.json()["detail"]
     buy.assert_not_called()
 
@@ -157,24 +158,28 @@ def test_free_text_and_unknown_ids_are_rejected_by_shop():
     with patch("backend.app.main.shop.buy") as buy:
         assert client.post("/shop", json={"request_text": REQUEST}).status_code == 422
         assert client.post("/shop", json={"request_text": REQUEST, "constraints": CONFIRMED}).status_code == 422
-        both = client.post("/shop", json={"mandate_id": parsed(client)["mandate_id"], "request_text": "other"})
+        p = parsed(client)
+        both = client.post("/shop", json={"mandate_id": p["mandate_id"], "confirm_token": p["confirm_token"],
+                                          "request_text": "other"})
         assert both.status_code == 422  # no side channel next to the id
-        assert client.post("/shop", json={"mandate_id": "mnd_nope"}).status_code == 404
+        assert client.post("/shop", json={"mandate_id": "mnd_nope", "confirm_token": "t"}).status_code == 404
     buy.assert_not_called()
 
 
 def test_confirmed_timestamp_comes_from_the_confirm_step_and_is_idempotent():
     client = TestClient(app)
-    mandate_id = parsed(client)["mandate_id"]
-    first = client.post(f"/mandate/{mandate_id}/confirm").json()
+    body = parsed(client)
+    mandate_id = body["mandate_id"]
+    tok = {"confirm_token": body["confirm_token"]}
+    first = client.post(f"/mandate/{mandate_id}/confirm", json=tok).json()
     stamp = datetime.fromisoformat(first["confirmed_by_buyer_at"])
     assert stamp.tzinfo is not None and first["constraints"] == CONFIRMED
-    assert client.post(f"/mandate/{mandate_id}/confirm").json()["confirmed_by_buyer_at"] == first["confirmed_by_buyer_at"]
-    assert client.post("/mandate/mnd_nope/confirm").status_code == 404
+    assert client.post(f"/mandate/{mandate_id}/confirm", json=tok).json()["confirmed_by_buyer_at"] == first["confirmed_by_buyer_at"]
+    assert client.post("/mandate/mnd_nope/confirm", json={"confirm_token": "t"}).status_code == 404
 
     # /shop passes that exact stamp on, not a new "now"
     with patch("backend.app.main.shop.buy", return_value={"ok": True}) as buy:
-        r = client.post("/shop", json={"mandate_id": mandate_id})
+        r = client.post("/shop", json={"mandate_id": mandate_id, **tok})
     assert r.status_code == 200
     assert buy.call_args.kwargs["confirmed_at"] == first["confirmed_by_buyer_at"]
     assert buy.call_args.kwargs["constraints"] == CONFIRMED
@@ -184,12 +189,14 @@ def test_confirmed_timestamp_comes_from_the_confirm_step_and_is_idempotent():
 def test_receipt_carries_the_confirm_step_time_end_to_end(monkeypatch):
     monkeypatch.setattr(shop.checkout, "start", lambda paypal, rid, **kw: {"status": "COMPLETED"})
     client = TestClient(app)
-    mandate_id = parsed(client)["mandate_id"]
-    stamp = client.post(f"/mandate/{mandate_id}/confirm").json()["confirmed_by_buyer_at"]
+    body = parsed(client)
+    mandate_id = body["mandate_id"]
+    tok = {"confirm_token": body["confirm_token"]}
+    stamp = client.post(f"/mandate/{mandate_id}/confirm", json=tok).json()["confirmed_by_buyer_at"]
     real_buy = shop.buy
     with patch("backend.app.main.shop.buy",
                side_effect=lambda *a, **kw: real_buy(*a, client=agent_client(), **kw)):
-        r = client.post("/shop", json={"mandate_id": mandate_id})
+        r = client.post("/shop", json={"mandate_id": mandate_id, **tok})
     assert r.status_code == 200
     mandate_ = ledger.get_receipt(r.json()["receipt_id"])["mandate"]
     assert mandate_["confirmed_by_buyer_at"] == stamp and mandate_["confirmation"] == "buyer"
@@ -198,17 +205,19 @@ def test_receipt_carries_the_confirm_step_time_end_to_end(monkeypatch):
 
 def test_a_mandate_buys_once():
     client = TestClient(app)
-    mandate_id = parsed(client)["mandate_id"]
-    client.post(f"/mandate/{mandate_id}/confirm")
+    body = parsed(client)
+    mandate_id = body["mandate_id"]
+    tok = {"confirm_token": body["confirm_token"]}
+    client.post(f"/mandate/{mandate_id}/confirm", json=tok)
     with patch("backend.app.main.shop.buy", return_value={"ok": True}) as buy:
-        assert client.post("/shop", json={"mandate_id": mandate_id}).status_code == 200
-        again = client.post("/shop", json={"mandate_id": mandate_id})
+        assert client.post("/shop", json={"mandate_id": mandate_id, **tok}).status_code == 200
+        again = client.post("/shop", json={"mandate_id": mandate_id, **tok})
     assert again.status_code == 409 and "already been used" in again.json()["detail"]
     assert buy.call_count == 1
     # confirming a used mandate doesn't reopen it
-    client.post(f"/mandate/{mandate_id}/confirm")
+    client.post(f"/mandate/{mandate_id}/confirm", json=tok)
     with patch("backend.app.main.shop.buy") as buy:
-        assert client.post("/shop", json={"mandate_id": mandate_id}).status_code == 409
+        assert client.post("/shop", json={"mandate_id": mandate_id, **tok}).status_code == 409
     buy.assert_not_called()
 
 
@@ -218,3 +227,57 @@ def test_staged_receipt_hash_is_unchanged():
     assert receipt["hash"] == STAGED_HASH
     assert "confirmed_by_buyer_at" not in receipt["mandate"]
     assert ledger.verify_chain()["ok"] is True
+
+
+# --- the confirm token: a per-mandate capability (not an identity) ---
+
+def test_parse_returns_a_token_and_stores_only_its_hash():
+    import hashlib
+    from backend.ledger import store
+    body = parsed(TestClient(app))
+    token = body["confirm_token"]
+    assert len(token) >= 32
+    row = store.read("SELECT * FROM mandates WHERE mandate_id = ?", (body["mandate_id"],))[0]
+    assert row["token_hash"] == hashlib.sha256(token.encode()).hexdigest()
+    assert token not in [str(v) for v in tuple(row)]
+    assert "confirm_token" not in client_confirm(TestClient(app), body)  # later responses never repeat it
+
+
+def client_confirm(client, body):
+    return client.post(f"/mandate/{body['mandate_id']}/confirm", json={"confirm_token": body["confirm_token"]}).json()
+
+
+def test_confirm_without_or_with_the_wrong_token_is_403_and_changes_nothing():
+    client = TestClient(app)
+    body = parsed(client)
+    url = f"/mandate/{body['mandate_id']}/confirm"
+    assert client.post(url).status_code == 403
+    assert client.post(url, json={}).status_code == 403
+    assert client.post(url, json={"confirm_token": "wrong"}).status_code == 403
+    assert mandates._get(body["mandate_id"])["confirmed_by_buyer_at"] is None
+    assert client.post(url, json={"confirm_token": body["confirm_token"]}).status_code == 200
+
+
+def test_shop_without_or_with_the_wrong_token_is_403_and_does_not_use_the_mandate():
+    client = TestClient(app)
+    body = parsed(client)
+    client_confirm(client, body)
+    with patch("backend.app.main.shop.buy", return_value={"ok": True}) as buy:
+        assert client.post("/shop", json={"mandate_id": body["mandate_id"]}).status_code == 403
+        assert client.post("/shop", json={"mandate_id": body["mandate_id"], "confirm_token": "wrong"}).status_code == 403
+        buy.assert_not_called()
+        # the other mandate's token doesn't work either
+        other = parsed(client)
+        assert client.post("/shop", json={"mandate_id": body["mandate_id"],
+                                          "confirm_token": other["confirm_token"]}).status_code == 403
+        assert client.post("/shop", json={"mandate_id": body["mandate_id"],
+                                          "confirm_token": body["confirm_token"]}).status_code == 200
+
+
+def test_a_mandate_from_before_tokens_cannot_be_confirmed():
+    from backend.ledger import store
+    m = mandates.create("x", {"currency": "USD"})
+    with store.write() as conn:
+        conn.execute("UPDATE mandates SET token_hash = NULL WHERE mandate_id = ?", (m["mandate_id"],))
+    with pytest.raises(mandates.MandateForbidden):
+        mandates.confirm(m["mandate_id"], m["confirm_token"])

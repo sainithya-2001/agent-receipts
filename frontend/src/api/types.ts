@@ -223,4 +223,6 @@ export interface StoredMandate {
   request_text: string;
   constraints: MandateConstraints;
   confirmed_by_buyer_at: string | null;
+  /** Returned once by /mandate/parse; never present on later responses. */
+  confirm_token?: string;
 }

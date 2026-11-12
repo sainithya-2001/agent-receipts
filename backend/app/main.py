@@ -55,11 +55,17 @@ class ShopRequest(BaseModel):
     """Only the id of a mandate the buyer confirmed: free text or constraints are rejected (422)."""
     model_config = ConfigDict(extra="forbid")
     mandate_id: str
+    confirm_token: str | None = None  # from /mandate/parse; checked in code so a missing one is 403, not 422
     background: bool = False  # true: start the run, answer at once with a job_id to poll
 
 
 class ParseRequest(BaseModel):
     request_text: str
+
+
+class ConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm_token: str | None = None
 
 
 @app.post("/mandate/parse", dependencies=[Depends(demo_limit_parse)])
@@ -74,13 +80,15 @@ def mandate_parse(req: ParseRequest) -> dict:
 
 
 @app.post("/mandate/{mandate_id}/confirm")
-def mandate_confirm(mandate_id: str) -> dict:
-    """The buyer confirms the parsed constraints. The server stamps the time and locks them;
-    confirming again returns the same record."""
+def mandate_confirm(mandate_id: str, req: ConfirmRequest | None = None) -> dict:
+    """The buyer confirms the parsed constraints, presenting the confirm_token /mandate/parse returned.
+    The server stamps the time and locks them; confirming again returns the same record."""
     try:
-        return mandates.confirm(mandate_id)
+        return mandates.confirm(mandate_id, req.confirm_token if req else None)
     except mandates.MandateNotFound as exc:
         raise HTTPException(404, str(exc))
+    except mandates.MandateForbidden as exc:
+        raise HTTPException(403, str(exc))
 
 
 def _paypal_error(exc: PayPalError) -> HTTPException:
@@ -96,9 +104,11 @@ def shop_route(req: ShopRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(503, str(exc))
     try:
-        confirmed = mandates.claim(req.mandate_id)
+        confirmed = mandates.claim(req.mandate_id, req.confirm_token)
     except mandates.MandateNotFound as exc:
         raise HTTPException(404, str(exc))
+    except mandates.MandateForbidden as exc:
+        raise HTTPException(403, str(exc))
     except mandates.MandateNotConfirmed as exc:
         raise HTTPException(422, str(exc))
     except mandates.MandateUsed as exc:

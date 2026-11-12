@@ -23,13 +23,17 @@ export const api = {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ request_text: requestText }),
     }),
-  confirmMandate: (mandateId: string) =>
-    call<StoredMandate>(`/mandate/${encodeURIComponent(mandateId)}/confirm`, { method: "POST" }),
-  // /shop takes only the id of a mandate the buyer confirmed; the server holds the request and limits.
-  startShop: (mandateId: string) =>
+  // The confirm token comes from /mandate/parse and is kept in page memory only (a capability, not an identity).
+  confirmMandate: (mandateId: string, confirmToken: string) =>
+    call<StoredMandate>(`/mandate/${encodeURIComponent(mandateId)}/confirm`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm_token: confirmToken }),
+    }),
+  // /shop takes only the id of a mandate the buyer confirmed (plus its token); the server holds the request and limits.
+  startShop: (mandateId: string, confirmToken: string) =>
     call<{ job_id: string }>("/shop", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mandate_id: mandateId, background: true }),
+      body: JSON.stringify({ mandate_id: mandateId, confirm_token: confirmToken, background: true }),
     }),
   shopJob: (jobId: string) => call<ShopJob>(`/shop/jobs/${encodeURIComponent(jobId)}`),
   catalog: () => call<Product[]>("/catalog"),

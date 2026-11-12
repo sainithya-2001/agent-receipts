@@ -89,14 +89,14 @@ def test_public_shop_route_turns_the_guard_on(monkeypatch):
     from backend.app.main import app
     monkeypatch.setenv("PAYPAL_CLIENT_ID", "id"); monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "s")
     m = mandates.create("shoes", {"size": "8", "max_price": 120.0, "currency": "USD"})
-    mandates.confirm(m["mandate_id"])
+    mandates.confirm(m["mandate_id"], m["confirm_token"])
     seen = {}
 
     def fake_buy(*a, **kw):
         seen.update(kw)
         return {"receipt_id": "r"}
     with patch("backend.app.main.shop.buy", side_effect=fake_buy):
-        assert TestClient(app).post("/shop", json={"mandate_id": m["mandate_id"]}).status_code == 200
+        assert TestClient(app).post("/shop", json={"mandate_id": m["mandate_id"], "confirm_token": m["confirm_token"]}).status_code == 200
     assert seen["guard"] is True
 
 
@@ -105,7 +105,8 @@ def test_public_shop_route_turns_the_guard_on(monkeypatch):
 def _confirmed():
     from backend import mandates
     m = mandates.create("shoes", {"size": "8", "max_price": 120.0, "currency": "USD"})
-    return mandates.confirm(m["mandate_id"])["mandate_id"]
+    mandates.confirm(m["mandate_id"], m["confirm_token"])
+    return {"mandate_id": m["mandate_id"], "confirm_token": m["confirm_token"]}
 
 
 def _post(monkeypatch, buy):
@@ -116,7 +117,7 @@ def _post(monkeypatch, buy):
     mid = _confirmed()
     client = TestClient(app)
     with patch("backend.app.main.shop.buy", side_effect=buy):
-        return client, mid, client.post("/shop", json={"mandate_id": mid})
+        return client, mid, client.post("/shop", json=mid)
 
 
 def test_mandates_live_in_the_database_not_in_process_memory():
@@ -126,7 +127,7 @@ def test_mandates_live_in_the_database_not_in_process_memory():
     assert store.read("SELECT request_text FROM mandates WHERE mandate_id = ?", (m["mandate_id"],))[0][0] == "shoes"
     ledger.clear()  # a fresh database: gone, with a clear 404 reason
     with pytest.raises(mandates.MandateNotFound):
-        mandates.confirm(m["mandate_id"])
+        mandates.confirm(m["mandate_id"], m["confirm_token"])
     assert ledger.verify_chain()["ok"]  # never part of the hash chain
 
 
@@ -142,8 +143,8 @@ def test_failed_before_payment_can_retry_with_the_same_mandate(monkeypatch):
     client, mid, first = _post(monkeypatch, buy)
     assert first.status_code == 422
     with patch("backend.app.main.shop.buy", side_effect=buy):
-        assert client.post("/shop", json={"mandate_id": mid}).status_code == 200
-        assert client.post("/shop", json={"mandate_id": mid}).status_code == 409  # a success uses it up
+        assert client.post("/shop", json=mid).status_code == 200
+        assert client.post("/shop", json=mid).status_code == 409  # a success uses it up
 
 
 def test_checkout_precheck_failure_is_retryable(monkeypatch):
@@ -153,7 +154,7 @@ def test_checkout_precheck_failure_is_retryable(monkeypatch):
     client, mid, first = _post(monkeypatch, buy)
     assert first.status_code == 422
     with patch("backend.app.main.shop.buy", return_value={"receipt_id": "r"}):
-        assert client.post("/shop", json={"mandate_id": mid}).status_code == 200
+        assert client.post("/shop", json=mid).status_code == 200
 
 
 def test_failure_once_ordering_began_keeps_the_mandate_used(monkeypatch):
@@ -165,14 +166,14 @@ def test_failure_once_ordering_began_keeps_the_mandate_used(monkeypatch):
     client, mid, first = _post(monkeypatch, buy)
     assert first.status_code == 502
     with patch("backend.app.main.shop.buy", return_value={"receipt_id": "r"}) as again:
-        assert client.post("/shop", json={"mandate_id": mid}).status_code == 409
+        assert client.post("/shop", json=mid).status_code == 409
     again.assert_not_called()
 
 
 def test_blocked_purchase_is_not_a_failure_and_keeps_the_mandate_used(monkeypatch):
     client, mid, first = _post(monkeypatch, lambda *a, **kw: {"receipt_id": "r", "checkout": {"blocked": True}})
     assert first.status_code == 200
-    assert client.post("/shop", json={"mandate_id": mid}).status_code == 409
+    assert client.post("/shop", json=mid).status_code == 409
 
 
 # --- nothing fits: decided in code, no model, no receipt, no PayPal ---
@@ -207,11 +208,11 @@ def test_no_match_releases_the_mandate_so_the_buyer_can_adjust(monkeypatch):
     from backend.app.main import app
     monkeypatch.setenv("PAYPAL_CLIENT_ID", "id"); monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "s")
     m = mandates.create("shoes", {"category": "running shoes", "size": "8", "max_price": 50.0, "currency": "USD"})
-    mandates.confirm(m["mandate_id"])
+    mandates.confirm(m["mandate_id"], m["confirm_token"])
     client = TestClient(app)
     with patch("backend.shop.shopping.run") as model:
-        first = client.post("/shop", json={"mandate_id": m["mandate_id"]})
-        second = client.post("/shop", json={"mandate_id": m["mandate_id"]})
+        first = client.post("/shop", json={"mandate_id": m["mandate_id"], "confirm_token": m["confirm_token"]})
+        second = client.post("/shop", json={"mandate_id": m["mandate_id"], "confirm_token": m["confirm_token"]})
     model.assert_not_called()
     assert first.status_code == 200 and first.json()["no_match"] and second.status_code == 200  # not "already used"
 
@@ -237,15 +238,15 @@ def test_task_page_gets_the_readable_refusal_message(monkeypatch):
     from backend.app.main import SHOP_REFUSED, app
     monkeypatch.setenv("PAYPAL_CLIENT_ID", "id"); monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "s")
     m = mandates.create("shoes", {"category": "running shoes", "size": "8", "max_price": 120.0, "currency": "USD"})
-    mandates.confirm(m["mandate_id"])
+    mandates.confirm(m["mandate_id"], m["confirm_token"])
     client = TestClient(app)
     with patch("backend.app.main.shop.buy", side_effect=RefusalError("RefusalStopDetails(...)")):
-        job_id = client.post("/shop", json={"mandate_id": m["mandate_id"], "background": True}).json()["job_id"]
+        job_id = client.post("/shop", json={"mandate_id": m["mandate_id"], "confirm_token": m["confirm_token"], "background": True}).json()["job_id"]
         for _ in range(100):
             job = client.get(f"/shop/jobs/{job_id}").json()
             if job["status"] != "running":
                 break
             time.sleep(0.02)
-        sync = client.post("/shop", json={"mandate_id": m["mandate_id"]})  # released after the failure: retryable
+        sync = client.post("/shop", json={"mandate_id": m["mandate_id"], "confirm_token": m["confirm_token"]})  # released after the failure: retryable
     assert job["status"] == "error" and job["error"] == SHOP_REFUSED and "RefusalStopDetails" not in job["error"]
     assert sync.status_code == 422 and sync.json()["detail"] == SHOP_REFUSED

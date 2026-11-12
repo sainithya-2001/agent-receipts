@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS mandates (
     constraints TEXT NOT NULL,      -- JSON
     confirmed_by_buyer_at TEXT,
     used INTEGER NOT NULL DEFAULT 0,
+    token_hash TEXT,                -- sha256 of the confirm token; the token itself is never stored
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE TRIGGER IF NOT EXISTS records_no_update BEFORE UPDATE ON records
@@ -90,6 +91,8 @@ def connection() -> sqlite3.Connection:
                 _conn.execute("PRAGMA journal_mode=WAL")
             _conn.executescript(_SCHEMA)
             cols = {r["name"] for r in _conn.execute("PRAGMA table_info(webhook_events)")}
+            if "token_hash" not in {r["name"] for r in _conn.execute("PRAGMA table_info(mandates)")}:
+                _conn.execute("ALTER TABLE mandates ADD COLUMN token_hash TEXT")  # old rows have none: unusable
             if "status" not in cols:  # a database from before delivery status existed: those were handled
                 _conn.execute("ALTER TABLE webhook_events ADD COLUMN status TEXT NOT NULL DEFAULT 'done'")
         return _conn

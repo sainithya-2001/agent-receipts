@@ -120,13 +120,14 @@ export default function TaskPage() {
     setError(null); setLimit(null); setJob(null); setStarting(true);
     try {
       // Authorize is the confirmation: the server stamps its time, then /shop accepts only this id.
-      await api.confirmMandate(parsed.mandate_id);
-      const { job_id } = await api.startShop(parsed.mandate_id);
+      const token = parsed.confirm_token ?? "";
+      await api.confirmMandate(parsed.mandate_id, token);
+      const { job_id } = await api.startShop(parsed.mandate_id, token);
       jobId.current = job_id;
       setJob({ job_id, status: "running", events: [], result: null, error: null });
     } catch (e) {
       const d = demoLimitOf(e);
-      if (e instanceof ApiError && [404, 409, 422].includes(e.status)) {
+      if (e instanceof ApiError && [403, 404, 409, 422].includes(e.status)) {
         setParsed(null); setStale(true); // back to the read step
       } else if (d) setLimit(d); else setError(e instanceof Error ? e.message : String(e));
     } finally {

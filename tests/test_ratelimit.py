@@ -84,7 +84,7 @@ def test_daily_cap_applies_across_routes_and_visitors(monkeypatch):
     client = TestClient(app)
     with patch("backend.app.main.shop.buy", return_value={"ok": True}):
         for i in range(5):  # 5 runs from 5 visitors hit the daily cap of 5
-            r = client.post("/shop", json={"mandate_id": mandates.confirm(mandates.create("x", {"currency": "USD"})["mandate_id"])["mandate_id"]}, headers={"X-Forwarded-For": f"192.0.2.{i}"})
+            r = client.post("/shop", json=_confirmed_body(), headers={"X-Forwarded-For": f"192.0.2.{i}"})
             assert r.status_code == 200
     r = client.post("/disputes/PP-D-1/resolve", headers={"X-Forwarded-For": "192.0.2.99"})
     assert r.status_code == 429 and r.json()["detail"]["limit"] == "day"
@@ -102,3 +102,9 @@ def test_read_routes_are_not_limited():
     for _ in range(10):
         assert client.get("/ledger/verify", headers=VISITOR_A).status_code == 200
     assert limiter.check("203.0.113.1", 3, 5) is None
+
+
+def _confirmed_body():
+    m = mandates.create("x", {"currency": "USD"})
+    mandates.confirm(m["mandate_id"], m["confirm_token"])
+    return {"mandate_id": m["mandate_id"], "confirm_token": m["confirm_token"]}

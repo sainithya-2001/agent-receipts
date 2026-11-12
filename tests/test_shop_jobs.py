@@ -30,7 +30,8 @@ def wait(client, job_id):
 def confirmed_mandate(request_text="shoes"):
     """A mandate that went through parse -> confirm, as the task page does."""
     m = mandates.create(request_text, {"category": "running shoes", "size": "8", "max_price": 120.0, "currency": "USD"})
-    return mandates.confirm(m["mandate_id"])["mandate_id"]
+    mandates.confirm(m["mandate_id"], m["confirm_token"])
+    return {"mandate_id": m["mandate_id"], "confirm_token": m["confirm_token"]}
 
 
 def fake_buy(request_text, paypal, client=None, progress=None, constraints=None, confirmed_at=None, confirmation='cli', guard=False):
@@ -43,7 +44,7 @@ def fake_buy(request_text, paypal, client=None, progress=None, constraints=None,
 def test_background_run_reports_progress_then_result():
     client = TestClient(app)
     with patch("backend.app.main.shop.buy", side_effect=fake_buy):
-        started = client.post("/shop", json={"mandate_id": confirmed_mandate(), "background": True})
+        started = client.post("/shop", json={**confirmed_mandate(), "background": True})
         job = wait(client, started.json()["job_id"])
     assert job["status"] == "done" and job["result"]["receipt_id"] == "rcpt_x"
     assert [e["kind"] for e in job["events"]] == ["step", "logged", "ordering"]
@@ -52,7 +53,7 @@ def test_background_run_reports_progress_then_result():
 def test_background_error_is_reported_not_raised():
     client = TestClient(app)
     with patch("backend.app.main.shop.buy", side_effect=ShoppingError("Agent hit max_tokens")):
-        job = wait(client, client.post("/shop", json={"mandate_id": confirmed_mandate(), "background": True}).json()["job_id"])
+        job = wait(client, client.post("/shop", json={**confirmed_mandate(), "background": True}).json()["job_id"])
     assert job["status"] == "error" and "max_tokens" in job["error"]
 
 
@@ -63,7 +64,7 @@ def test_unknown_job_is_404():
 def test_rate_limit_applies_to_background_runs():
     client = TestClient(app)
     with patch("backend.app.main.shop.buy", side_effect=fake_buy):
-        codes = [client.post("/shop", json={"mandate_id": confirmed_mandate(), "background": True}).status_code for _ in range(3)]
+        codes = [client.post("/shop", json={**confirmed_mandate(), "background": True}).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
 
 
