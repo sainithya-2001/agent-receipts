@@ -84,3 +84,15 @@ def test_vaulted_checkout_completes_without_redirect(monkeypatch):
     events = ledger.get_receipt(rid)["events"]
     assert [e["kind"] for e in events] == ["paypal_order_created", "paypal_captured"]
     assert events[0]["vaulted"] is True and events[1]["capture_id"] == "CAP2"
+
+
+def test_order_request_id_comes_from_the_receipt_on_both_paths(monkeypatch):
+    rid = ledger.log_intent(MANDATE, agent_run())
+    with patch("backend.checkout.orders.create_order", return_value={"id": "O", "status": "CREATED"}) as redirect:
+        checkout.start(None, rid)
+    assert redirect.call_args.kwargs["request_id"] == f"order-{rid}"
+    monkeypatch.setenv("PAYPAL_VAULT_ID", "V1")
+    rid2 = ledger.log_intent(MANDATE, agent_run())
+    with patch("backend.checkout.orders.create_vaulted_order", return_value={"id": "O2", "status": "CREATED"}) as vaulted:
+        checkout.start(None, rid2)
+    assert vaulted.call_args.kwargs["request_id"] == f"order-{rid2}"

@@ -59,12 +59,13 @@ def start(paypal: PayPalClient, receipt_id: str, *, guard: bool = False) -> dict
         order = orders.create_vaulted_order(
             paypal, amount, settings.paypal_vault_id, currency=product["currency"],
             description=description, custom_id=receipt_id, invoice_id=receipt["hash"],
+            request_id=f"order-{receipt_id}",
         )
     else:
         order = orders.create_order(
             paypal, amount, currency=product["currency"], description=description, custom_id=receipt_id,
             invoice_id=receipt["hash"], return_url=f"{settings.app_base_url}/paypal/return",
-            cancel_url=f"{settings.app_base_url}/paypal/cancel",
+            cancel_url=f"{settings.app_base_url}/paypal/cancel", request_id=f"order-{receipt_id}",
         )
     ledger.append_event(
         receipt_id,

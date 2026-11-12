@@ -225,6 +225,8 @@ def _handle_dispute(dispute_id: str, file: bool, event_id: str | None = None) ->
     try:
         result = resolve.resolve_by_id(PayPalClient(), dispute_id, file=file)
         log.info("dispute %s: %s, next %s", dispute_id, result["status"], result.get("next"))
+        if event_id:
+            ledger.finish_event(event_id)  # done only now that handling succeeded
     except Exception:
         log.exception("dispute %s: handling failed", dispute_id)
         if event_id:

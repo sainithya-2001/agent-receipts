@@ -33,7 +33,8 @@ CREATE INDEX IF NOT EXISTS records_by_order ON records (order_id);
 -- it is delivery bookkeeping, not evidence.
 CREATE TABLE IF NOT EXISTS webhook_events (
     event_id TEXT PRIMARY KEY,
-    received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),  -- last time handling started
+    status TEXT NOT NULL DEFAULT 'processing'                                    -- processing | done
 );
 -- Mandates (parsed requests the buyer confirms and spends once). Bookkeeping like webhook_events:
 -- outside the hash chain, mutable, and not evidence. The receipt records the confirmed mandate itself.
@@ -88,6 +89,9 @@ def connection() -> sqlite3.Connection:
             if path != ":memory:":
                 _conn.execute("PRAGMA journal_mode=WAL")
             _conn.executescript(_SCHEMA)
+            cols = {r["name"] for r in _conn.execute("PRAGMA table_info(webhook_events)")}
+            if "status" not in cols:  # a database from before delivery status existed: those were handled
+                _conn.execute("ALTER TABLE webhook_events ADD COLUMN status TEXT NOT NULL DEFAULT 'done'")
         return _conn
 
 
@@ -104,10 +108,27 @@ def write() -> Iterator[sqlite3.Connection]:
         conn.execute("COMMIT")
 
 
-def claim_event(event_id: str) -> bool:
-    """Record a webhook event id. True the first time, False for a repeat delivery."""
+STALE_AFTER_SECONDS = 300
+
+
+def claim_event(event_id: str, stale_after: int = STALE_AFTER_SECONDS) -> bool:
+    """Start handling a webhook event. True for a new event, or for one still 'processing' after
+    `stale_after` seconds (the worker that took it probably died: reprocess). False for a repeat delivery
+    of an event that is done or is being handled right now."""
     with write() as conn:
-        return conn.execute("INSERT OR IGNORE INTO webhook_events (event_id) VALUES (?)", (event_id,)).rowcount == 1
+        if conn.execute("INSERT OR IGNORE INTO webhook_events (event_id) VALUES (?)", (event_id,)).rowcount == 1:
+            return True
+        return conn.execute(
+            "UPDATE webhook_events SET received_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') "
+            "WHERE event_id = ? AND status = 'processing' "
+            "AND received_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)",
+            (event_id, f"-{int(stale_after)} seconds")).rowcount == 1
+
+
+def finish_event(event_id: str) -> None:
+    """Mark an event's handling as done (only after it succeeded)."""
+    with write() as conn:
+        conn.execute("UPDATE webhook_events SET status = 'done' WHERE event_id = ?", (event_id,))
 
 
 def release_event(event_id: str) -> None:

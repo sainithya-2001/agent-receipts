@@ -4,6 +4,12 @@ from typing import Any
 from backend.paypal.client import PayPalClient
 
 
+def _request_id(request_id: str | None) -> dict[str, str] | None:
+    """A stable PayPal-Request-Id: a retry of the same call returns PayPal's first result instead of
+    creating (or capturing) a second time. None keeps the client's random per-call id."""
+    return {"PayPal-Request-Id": request_id} if request_id else None
+
+
 def create_order(
     client: PayPalClient,
     amount: str,
@@ -13,6 +19,7 @@ def create_order(
     invoice_id: str | None = None,
     return_url: str = "https://example.com/return",
     cancel_url: str = "https://example.com/cancel",
+    request_id: str | None = None,
 ) -> dict[str, Any]:
     """Create a CAPTURE-intent order. The buyer must approve it before capture."""
     unit: dict[str, Any] = {"amount": {"currency_code": currency, "value": amount}}
@@ -37,7 +44,7 @@ def create_order(
             }
         },
     }
-    return client.request("POST", "/v2/checkout/orders", json=body)
+    return client.request("POST", "/v2/checkout/orders", json=body, headers=_request_id(request_id))
 
 
 def create_vaulted_order(
@@ -48,6 +55,7 @@ def create_vaulted_order(
     description: str | None = None,
     custom_id: str | None = None,
     invoice_id: str | None = None,
+    request_id: str | None = None,
 ) -> dict[str, Any]:
     """Charge a saved PayPal wallet. In sandbox this returns COMPLETED, already captured:
     no buyer redirect and no separate capture call."""
@@ -59,7 +67,7 @@ def create_vaulted_order(
     if invoice_id:
         unit["invoice_id"] = invoice_id
     body = {"intent": "CAPTURE", "purchase_units": [unit], "payment_source": {"paypal": {"vault_id": vault_id}}}
-    return client.request("POST", "/v2/checkout/orders", json=body)
+    return client.request("POST", "/v2/checkout/orders", json=body, headers=_request_id(request_id))
 
 
 def get_order(client: PayPalClient, order_id: str) -> dict[str, Any]:
@@ -67,7 +75,8 @@ def get_order(client: PayPalClient, order_id: str) -> dict[str, Any]:
 
 
 def capture_order(client: PayPalClient, order_id: str) -> dict[str, Any]:
-    return client.request("POST", f"/v2/checkout/orders/{order_id}/capture", json={})
+    return client.request("POST", f"/v2/checkout/orders/{order_id}/capture", json={},
+                          headers=_request_id(f"capture-{order_id}"))
 
 
 def approve_link(order: dict[str, Any]) -> str | None:
