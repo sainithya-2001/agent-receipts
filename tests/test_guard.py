@@ -269,3 +269,39 @@ def test_anchor_check_of_a_blocked_receipt_still_reports_the_recomputed_intent_h
                              "chosen_size": "8", "reasoning": "r", "steps": []})
     out = ledger.verify_receipt_against_paypal(rid, None)
     assert out["ok"] is False and out["order_id"] is None and out["intent_hash"] == intent_hash(rid)
+
+
+# --- the agent picks nothing although the catalog has a match ---
+
+def test_no_pick_with_a_catalog_match_is_a_pre_payment_failure(monkeypatch):
+    import time
+    from fastapi.testclient import TestClient
+    from backend import mandates
+    from backend.app.main import app
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "id"); monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "s")
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "0")
+    c = {"category": "running shoes", "size": "8", "max_price": 120.0, "currency": "USD"}  # p_03 fits
+    m = mandates.create("shoes", c)
+    mandates.confirm(m["mandate_id"], m["confirm_token"])
+    body = {"mandate_id": m["mandate_id"], "confirm_token": m["confirm_token"]}
+    picked_nothing = {"mandate": {"request_text": "shoes", "constraints": c},
+                      "agent_run": {"model": "m", "options_considered": [], "chosen_product_id": None,
+                                    "chosen_size": None, "reasoning": "none", "steps": []}}
+    client = TestClient(app)
+    with patch("backend.shop.shopping.run", return_value=picked_nothing), \
+            patch("backend.checkout.orders.create_order") as create, \
+            patch("backend.checkout.orders.create_vaulted_order") as vaulted:
+        job_id = client.post("/shop", json={**body, "background": True}).json()["job_id"]
+        for _ in range(100):
+            job = client.get(f"/shop/jobs/{job_id}").json()
+            if job["status"] != "running":
+                break
+            time.sleep(0.02)
+    assert job["status"] == "error"
+    assert job["error"] == "The agent didn't pick a product. Nothing was charged; try again."
+    create.assert_not_called(); vaulted.assert_not_called()
+    assert ledger.verify_chain()["records"] == 0  # no receipt was logged either
+    # the mandate was released: it can be used again
+    with patch("backend.shop.shopping.run", return_value=picked_nothing):
+        again = client.post("/shop", json=body)
+    assert again.status_code == 422 and "didn't pick a product" in again.json()["detail"]  # not 409 "already used"

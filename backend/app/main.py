@@ -13,7 +13,7 @@ from backend.agents.adjudicator import AdjudicationError, listing_injection
 from backend.agents import mandate
 from backend.agents.evidence import EvidenceError
 from backend.agents.llm import RefusalError
-from backend.agents.shopping import ShoppingError
+from backend.agents.shopping import NoProductPicked, ShoppingError
 from backend.config import get_settings
 from backend.ledger import LedgerError
 from backend.paypal import webhooks
@@ -157,6 +157,8 @@ def _describe_shop_error(exc: Exception) -> str:
         return f"PayPal rejected the order ({exc.status}, debug id {exc.debug_id})."
     if isinstance(exc, RefusalError):
         return SHOP_REFUSED
+    if isinstance(exc, NoProductPicked):
+        return NoProductPicked.MESSAGE
     if isinstance(exc, (ShoppingError, ledger.InvalidReceipt)):
         return f"{exc} Nothing was charged; you can authorize again."
     if isinstance(exc, checkout.CheckoutError):
@@ -259,7 +261,7 @@ def paypal_webhook(request: Request, background: BackgroundTasks, event: dict = 
         raise HTTPException(400, "webhook signature not verified")
     dispute_id = webhooks.dispute_id_of(event)
     event_id = event.get("id")
-    # PayPal redelivers events; handle each event id once. Checked after the signature, so only
+    # PayPal redelivers events; a done event is skipped, a stuck one is reprocessed on redelivery. Checked after the signature, so only
     # genuine events can use up an id.
     if event_id and not ledger.claim_event(event_id):
         return {"received": True, "duplicate": True, "event_type": event.get("event_type"),

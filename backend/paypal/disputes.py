@@ -13,8 +13,8 @@ SELLER_FAVOUR = "SELLER_FAVOR"
 
 def request_id(dispute_id: str, action: str) -> str:
     """PayPal-Request-Id for a filing call: the same (dispute, action) always gives the same id,
-    so a retry (after a timeout, a crash, a repeated webhook) is a replay on PayPal's side, not a
-    second filing."""
+    so a retry (after a timeout, a crash, a repeated webhook) carries the same id and is handled
+    under PayPal's idempotency handling."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"agent-receipts:{dispute_id}:{action}"))
 
 

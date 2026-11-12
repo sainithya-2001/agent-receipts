@@ -33,6 +33,10 @@ def buy(request_text: str, paypal: PayPalClient, client: anthropic.Anthropic | N
         confirmation = "buyer"
     decision = shopping.run(request_text, client=client, on_step=lambda step: emit({"kind": "step", "step": step}),
                             constraints=constraints, confirmed_at=confirmed_at)
+    if constraints is not None and not decision["agent_run"].get("chosen_product_id"):
+        # The pre-check found a product that fits, yet the agent picked none: a pre-payment failure.
+        # No intent is logged and no order is made; the caller gives the mandate back.
+        raise shopping.NoProductPicked()
     decision["mandate"]["confirmation"] = confirmation
     receipt_id = ledger.log_intent(decision["mandate"], decision["agent_run"])
     emit({"kind": "logged", "receipt_id": receipt_id, "constraints": decision["mandate"]["constraints"],

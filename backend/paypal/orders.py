@@ -5,8 +5,8 @@ from backend.paypal.client import PayPalClient
 
 
 def _request_id(request_id: str | None) -> dict[str, str] | None:
-    """A stable PayPal-Request-Id: a retry of the same call returns PayPal's first result instead of
-    creating (or capturing) a second time. None keeps the client's random per-call id."""
+    """A stable PayPal-Request-Id, so a retry of the same call is idempotent under PayPal's idempotency
+    handling. None keeps the client's random per-call id."""
     return {"PayPal-Request-Id": request_id} if request_id else None
 
 
