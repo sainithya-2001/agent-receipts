@@ -387,4 +387,5 @@ Expose these as a "break the agent" control in the UI.
 \- \[ ] \*\*Day 13:\*\* Devpost write-up, repo polish
 
 \- \[ ] \*\*Day 14 (Nov 12):\*\* buffer, submit by noon EST
+- **Final hardening (Nov 12, `day-12`):** (1) PayPal-Request-Id is stable: `order-<receipt_id>` for order creation (vaulted and redirect), `capture-<order_id>` for capture. (2) `webhook_events` has `status` (processing/done) and a timestamp; done only after handling succeeds; a `processing` event older than 5 min is reprocessed. (3) `/mandate/parse` returns a random `confirm_token` (only its sha256 is stored); `/mandate/{id}/confirm` and `/shop` require it (403 if missing/wrong); it is a per-mandate capability, not an identity, and /task keeps it in memory only. (4) **Prompt gotcha:** the shopping prompt's no-match sentence must stay "say so briefly in decision_summary": "explain why", "a decision_summary of a few words", "a short note" and a quoted sentence all drew `reasoning_extraction` refusals on ordinary requests (live-tested). Re-test live before rewording. Tests: 269.
 
