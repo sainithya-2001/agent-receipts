@@ -15,6 +15,14 @@ Built for the PayPal AI Hackathon: *Build what's next with PayPal and AI*.
 
 ---
 
+## About this project
+
+I built Proof of Intent on my own for this hackathon. I designed the architecture and the trust model: PayPal as an independent integrity witness (the receipt hash travels as the order's `invoice_id`), adjudication that works out the facts in code before any AI is involved and fails closed when integrity can't be checked, buyer-confirmed mandates, and the pre-payment guard. I integrated PayPal Orders, Vault, Captures, Disputes and Webhooks, and built the ledger, the adjudication pipeline, the MCP server and the merchant console.
+
+I validated it with automated tests, three external technical reviews whose findings I triaged and fixed, and live sandbox runs, including a real dispute that PayPal refunded.
+
+---
+
 ## The problem
 
 AI agents are starting to shop for people. When one buys the wrong size, overspends, or gets tricked by a product listing, the dispute that follows has no evidence. A normal purchase record shows *what* was bought. It doesn't show *what the agent was asked to do* or *why it chose that item*, and that is exactly what decides who is at fault.
@@ -79,10 +87,9 @@ Proof of Intent differs in where the evidence is used. It treats the intent reco
 
 | Tool | How |
 |---|---|
-| **Claude API** (model set by `ANTHROPIC_MODEL`; built and tested with `claude-sonnet-5-5`) | Three agents: the **shopping agent** (tool-use loop over the catalog), the **adjudicator** (structured JSON verdict constrained by code-derived facts), and the **evidence agent** (writes the PayPal dispute response). Prompt caching on system prompts and tools |
+| **Claude API** (model set by `ANTHROPIC_MODEL`; built and tested with `claude-sonnet-5-5`) | Three agents: the **shopping agent** (tool-use loop over the catalog), the **adjudicator** (structured JSON verdict constrained by code-derived facts), and the **evidence agent** (writes the PayPal dispute response). A small structured-output call also reads the buyer's request into limits for them to confirm. Prompt caching on system prompts and tools |
 | **Model Context Protocol (MCP)** | The receipts ledger is exposed as an MCP server (`log_intent`, `get_receipt`, `verify_chain`) so any agent can log intent before buying |
 | **Retrieval (RAG)** | BM25 keyword retrieval over 20 dispute, evidence, liability and return-policy rules; the adjudicator cites the rule it applied |
-| **Claude Code** | Used to build the project |
 
 ## Architecture
 
@@ -186,7 +193,7 @@ The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_F
 
 - **Log first, then pay.** The agent cannot create a PayPal order without a receipt ID. The intent exists before any money moves, so it can't be written to fit the outcome.
 - **Append, never edit.** PayPal order IDs, disputes, verdicts and filings are added as linked events. A hashed record is never changed, and database triggers refuse updates and deletes.
-- **Anchor outside our database.** A hash chain alone can be rebuilt by anyone who controls the database. The receipt hash goes into the PayPal order as `invoice_id`, so PayPal holds a copy we can't rewrite. The adjudicator reads it back from the captured payment named in the dispute.
+- **Anchor outside the ledger's database.** A hash chain alone can be rebuilt by anyone who controls the database. The receipt hash goes into the PayPal order as `invoice_id`, so PayPal holds a copy the ledger's owner can't rewrite. The adjudicator reads it back from the captured payment named in the dispute.
 - **Judge against a snapshot.** The receipt stores the listing the agent chose (name, price, description, attributes), so a later catalog change can't rewrite what the agent saw. Receipts logged before snapshots existed fall back to the catalog, and the verdict card says so.
 - **Facts first, model second.** Code works out the integrity result, the field-by-field diff and any injected listing text. Those facts limit the possible verdicts. Claude only chooses among them, cites a rule and explains.
 - **Injection must be shown to matter.** A listing that tries to instruct the agent only shifts fault to the merchant if the agent actually saw that listing and the violated field is the one the text told it to override. Otherwise the case goes to a person.
@@ -206,6 +213,10 @@ The hosted demo never files with PayPal (`FILING_ENABLED=false`, `DISPUTE_AUTO_F
 - **Injection attribution is evidence-based**, not a formal proof: what the agent saw and what the injected text told it to override. Unclear cases go to manual review.
 - **Demo rules and catalog.** The 20 dispute rules are written for this demo, not PayPal policy; one sandbox merchant, 20 products.
 - **Free hosting.** The first load can take about a minute, and demo data resets when the server restarts.
+
+## Development
+
+Built with AI-assisted development (Claude Code); architecture, trust design and review decisions are my own, validated with automated tests, external reviews and live sandbox runs.
 
 ## License
 
