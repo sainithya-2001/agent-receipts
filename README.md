@@ -57,12 +57,13 @@ On the live demo's merchant console, the **Break the agent** cards run seeded fa
 | Card | What happens | Expected verdict |
 |---|---|---|
 | Wrong size | Agent buys size 9 when 8 was asked | `AGENT_ERROR` |
-| Over budget | Agent buys $159.99 against a $120 limit | `AGENT_ERROR` |
+| Over budget (no guard) | Agent buys $159.99 against a $120 limit on a platform without a pre-payment guard | `AGENT_ERROR` |
+| Guard stops an overspend | The same overspend, guard on: blocked before PayPal is called, nothing to dispute | Green "Blocked before payment" frame, no order |
 | Prompt-injected listing | A listing tells shopping agents to ignore the budget | `MERCHANT_ERROR`, injected text highlighted |
 | Buyer changed their mind | Agent buys exactly what was asked | `BUYER_REMORSE` |
 | Tamper with a receipt | A receipt is edited and the whole chain rehashed | Chain still "verifies", but the PayPal anchor check fails → manual review |
 
-Each run places a **real PayPal sandbox order** (vaulted, no login) with the receipt hash anchored. Only the dispute is simulated, so judges can try every case instantly. Real PayPal disputes are shown in the queue alongside them.
+Each run (except the guard card, which never reaches PayPal) places a **real PayPal sandbox order** (vaulted, no login) with the receipt hash anchored. Only the dispute is simulated, so judges can try every case instantly. Real PayPal disputes are shown in the queue alongside them.
 
 The hosted demo **never files anything with PayPal** (`FILING_ENABLED=false`) and is rate-limited to protect the API budget.
 

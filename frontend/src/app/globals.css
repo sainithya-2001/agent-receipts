@@ -148,7 +148,7 @@ button { font: inherit; color: inherit; }
 .tally .merchant .n { color: var(--amber); }
 .tally .remorse .n { color: var(--green); }
 
-.seed-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; border: 1px solid var(--ink); }
+.seed-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid var(--ink); }
 .seed {
   background: var(--card); border-right: 1px solid var(--rule);
   padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-height: 150px;

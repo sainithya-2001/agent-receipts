@@ -33,7 +33,7 @@ export default function QueuePage() {
     try {
       const res = await api.runScenario(name);
       window.dispatchEvent(new Event("ledger-changed"));
-      router.push(`/receipts/${res.receipt_id}?dispute=${encodeURIComponent(res.dispute_id)}`);
+      router.push(res.blocked ? `/receipts/${res.receipt_id}` : `/receipts/${res.receipt_id}?dispute=${encodeURIComponent(res.dispute_id)}`);
     } catch (e) {
       const capped = demoLimitOf(e);
       if (capped) setLimit(capped);
@@ -79,11 +79,14 @@ export default function QueuePage() {
           <div key={s.name} className={`seed ${s.expected_status === "needs_review" ? "attack" : ""}`}>
             <span className="seed-title">{s.title}</span>
             <span className="seed-breaks">{s.breaks}</span>
-            <span className="muted" style={{ fontSize: 12 }}>Guard off: an agent platform without a pre-payment guard.</span>
+            <span className="muted" style={{ fontSize: 12 }}>
+              {s.guard === "on" ? "Guard on: the platform checks the choice before paying." : "Guard off: an agent platform without a pre-payment guard."}
+            </span>
             <span className="seed-foot">
               <span>
                 <span className="eyebrow" style={{ display: "block", marginBottom: 4 }}>expect</span>
-                <FaultTag fault={s.expected_fault} status={s.expected_status} />
+                {s.expected_status === "blocked" ? <span className="tag remorse">Blocked before payment</span>
+                  : <FaultTag fault={s.expected_fault} status={s.expected_status} />}
               </span>
               <button className="btn small primary" disabled={running !== null} onClick={() => seed(s.name)}>
                 {running === s.name ? "Running…" : "Run ▸"}

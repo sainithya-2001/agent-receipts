@@ -117,7 +117,7 @@ def test_triggers_are_back_after_a_tamper(paypal):
 
 def test_scenario_list_has_the_tamper_card():
     listed = {s["name"]: s for s in TestClient(app).get("/scenarios").json()}
-    assert len(listed) == 5
+    assert len(listed) == 6
     assert listed["tampered_receipt"]["expected_status"] == "needs_review"
     assert listed["wrong_size"]["expected_status"] == "decided"
 
@@ -129,3 +129,36 @@ def test_run_route_returns_order_and_verdict(paypal):
     assert r.status_code == 200, body
     assert body["order"]["capture_id"] == "CAP1" and body["verdict"]["integrity"]["status"] == "verified"
     assert json.dumps(body)  # serialisable
+
+
+def test_guard_card_blocks_the_overspend_before_paypal(paypal):
+    pp = MagicMock()
+    with patch("backend.checkout.orders.create_vaulted_order") as vaulted, patch("backend.checkout.orders.create_order") as redirect:
+        out = scenarios.run("guard_stops_overspend", pp, client=fake_claude())  # no model call needed
+    vaulted.assert_not_called(); redirect.assert_not_called()
+    assert not pp.method_calls and pp.request.call_count == 0  # PayPal was never touched
+    assert out["blocked"] is True and out["dispute_id"] is None and out["status"] == "blocked"
+    assert [v["field"] for v in out["violations"]] == ["price"]
+    kinds = [e["kind"] for e in out["receipt"]["events"]]
+    assert kinds == ["purchase_blocked"]  # no order, no capture, no dispute
+    assert out["receipt"]["events"][0]["guard"] == "on" and out["receipt"]["events"][0]["product_id"] == "p_04"
+    assert ledger.verify_chain()["ok"]
+
+
+def test_guard_cards_are_labelled_and_the_old_card_says_no_guard():
+    listed = {s["name"]: s for s in TestClient(app).get("/scenarios").json()}
+    assert listed["guard_stops_overspend"]["guard"] == "on" and listed["guard_stops_overspend"]["expected_status"] == "blocked"
+    assert listed["over_budget"]["guard"] == "off" and "no guard" in listed["over_budget"]["title"].lower()
+    assert all(listed[n]["guard"] == "off" for n in ("wrong_size", "prompt_injection", "buyer_remorse", "tampered_receipt"))
+
+
+def test_guard_card_runs_through_the_route_without_credentials(monkeypatch):
+    monkeypatch.delenv("PAYPAL_CLIENT_ID"); monkeypatch.delenv("PAYPAL_CLIENT_SECRET")
+    r = TestClient(app).post("/scenarios/guard_stops_overspend/run")
+    assert r.status_code == 200 and r.json()["blocked"] is True
+
+
+def test_unguarded_over_budget_still_buys_for_real(paypal):
+    out = scenarios.run("over_budget", MagicMock(), client=fake_claude("AGENT_ERROR", "AL-2"))
+    assert out["order"]["capture_id"] == "CAP1"
+    assert next(e for e in out["receipt"]["events"] if e["kind"] == "paypal_order_created")["guard"] == "off"

@@ -38,6 +38,17 @@ TAMPER = {
 }
 
 
+GUARDED = {
+    "name": "guard_stops_overspend",
+    "title": "Guard stops an overspend",
+    "breaks": "The same $159.99 overspend as \"Over budget\", but this platform has the pre-payment guard on: "
+              "the purchase is blocked before PayPal is called, so there is nothing to dispute.",
+    "expected_fault": None,
+    "expected_status": "blocked",
+    "base": "over_budget",
+}
+
+
 class ScenarioError(RuntimeError):
     pass
 
@@ -48,12 +59,18 @@ def _load() -> tuple[dict[str, Any], ...]:
 
 
 def list_scenarios() -> list[dict[str, Any]]:
-    seeded = [{k: s[k] for k in ("name", "title", "breaks", "expected_fault")} | {"expected_status": "decided"}
+    """Each card says whether the platform it simulates has the pre-payment guard (guard: "on" | "off")."""
+    seeded = [{k: s[k] for k in ("name", "title", "breaks", "expected_fault")} | {"expected_status": "decided", "guard": "off"}
               for s in _load()]
-    return seeded + [{k: TAMPER[k] for k in ("name", "title", "breaks", "expected_fault", "expected_status")}]
+    extra = [{k: card[k] for k in ("name", "title", "breaks", "expected_fault", "expected_status")} | {"guard": guard}
+             for card, guard in ((TAMPER, "off"), (GUARDED, "on"))]
+    return seeded + extra
 
 
 def get_scenario(name: str) -> dict[str, Any] | None:
+    if name == GUARDED["name"]:
+        base = get_scenario(GUARDED["base"])
+        return {**base, **{k: v for k, v in GUARDED.items() if k != "base"}, "guard": True}
     if name == TAMPER["name"]:
         base = get_scenario(TAMPER["base"])
         return {**base, **{k: v for k, v in TAMPER.items() if k != "base"}, "tamper": True}
@@ -109,6 +126,15 @@ def run(name: str, paypal: PayPalClient | None = None,
         raise ScenarioError("Tampering needs a real anchored order: set PayPal credentials and PAYPAL_VAULT_ID")
 
     receipt_id = log_receipt(scenario)
+    if scenario.get("guard"):
+        # Guard on: the same scripted choice goes through checkout's pre-payment check, which stops it
+        # before any PayPal call (none is passed in, so a missed block would fail loudly).
+        blocked = checkout.start(None, receipt_id, guard=True)
+        if not blocked.get("blocked"):
+            raise ScenarioError("The guard let the scripted overspend through")
+        return {"scenario": name, "expected_fault": None, "expected_status": "blocked", "status": "blocked",
+                "blocked": True, "receipt_id": receipt_id, "dispute_id": None, "order": blocked,
+                "violations": blocked["violations"], "receipt": ledger.get_receipt(receipt_id)}
     order = checkout.start(paypal, receipt_id) if live else None
     capture_id = order.get("capture_id") if order else None
     if live and not capture_id:

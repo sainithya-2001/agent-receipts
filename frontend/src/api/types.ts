@@ -153,6 +153,7 @@ export interface NextStep {
 }
 
 export interface ResolveResult {
+  blocked?: boolean; // a guard-on scenario: stopped before payment, no dispute
   dispute_id: string;
   receipt_id: string | null;
   status: "adjudicated" | "filed" | "no_receipt";
@@ -204,7 +205,8 @@ export interface Scenario {
   title: string;
   breaks: string;
   expected_fault: FaultClass | null;
-  expected_status: "decided" | "needs_review";
+  expected_status: "decided" | "needs_review" | "blocked";
+  guard: "on" | "off";
 }
 
 export interface ChainStatus {

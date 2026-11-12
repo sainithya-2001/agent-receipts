@@ -238,7 +238,9 @@ function EventBody({ event, verdict, receipt }: { event: LedgerEvent; verdict?: 
           {(e.violations ?? []).map((v: any, i: number) => (
             <div key={i} className="mono" style={{ fontSize: 13 }}>{v.field}: confirmed {v.asked ?? "—"}, agent attempted {v.attempted ?? "—"}</div>
           ))}
-          <div className="muted" style={{ fontSize: 12.5 }}>No PayPal call was made.</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            Pre-payment guard {e.guard === "on" ? "on" : "off"}. No PayPal call was made.
+          </div>
           {tail}
         </>
       );

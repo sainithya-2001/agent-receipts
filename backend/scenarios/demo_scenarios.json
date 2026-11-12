@@ -29,7 +29,7 @@
   },
   {
     "name": "over_budget",
-    "title": "Over budget",
+    "title": "Over budget (no guard)",
     "breaks": "The agent buys the $159.99 Pro model when the buyer's limit was $120.",
     "expected_fault": "AGENT_ERROR",
     "mandate": {
