@@ -1,15 +1,15 @@
 # Proof of Intent
 
+[![Demo video](https://img.youtube.com/vi/2_8M0kO0pIc/maxresdefault.jpg)](https://youtu.be/2_8M0kO0pIc)
+
 [![CI](https://github.com/sainithya-2001/agent-receipts/actions/workflows/ci.yml/badge.svg)](https://github.com/sainithya-2001/agent-receipts/actions/workflows/ci.yml)
 
 **The dispute layer for AI purchases on PayPal.** When an AI agent buys the wrong thing, Proof of Intent records what it was asked to do before the purchase, uses that record to decide who is at fault, and settles the dispute through PayPal.
 
 The lifecycle is **prevent → record → resolve**: a guard stops a purchase that breaks the buyer's confirmed limits before any money moves; a hash-anchored receipt records what the agent was asked and chose; and when a dispute still happens, the adjudicator settles it from that receipt.
 
-Built for the PayPal AI Hackathon: *Build what's next with PayPal and AI*.
-
 - **Live demo:** https://agent-receipts-web.onrender.com (free hosting: first load can take ~60s)
-- **Demo video (under 3 min):** `<YOUTUBE_URL>`
+- **Demo video (under 3 min):** https://youtu.be/2_8M0kO0pIc
 
 ![Replay timeline with the deviating step highlighted](docs/screenshots/replay.png)
 
@@ -17,7 +17,7 @@ Built for the PayPal AI Hackathon: *Build what's next with PayPal and AI*.
 
 ## About this project
 
-I built Proof of Intent on my own for this hackathon. I designed the architecture and the trust model: PayPal as an independent integrity witness (the receipt hash travels as the order's `invoice_id`), adjudication that works out the facts in code before any AI is involved and fails closed when integrity can't be checked, buyer-confirmed mandates, and the pre-payment guard. I integrated PayPal Orders, Vault, Captures, Disputes and Webhooks, and built the ledger, the adjudication pipeline, the MCP server and the merchant console.
+I designed and built Proof of Intent myself. I designed the architecture and the trust model: PayPal as an independent integrity witness (the receipt hash travels as the order's `invoice_id`), adjudication that works out the facts in code before any AI is involved and fails closed when integrity can't be checked, buyer-confirmed mandates, and the pre-payment guard. I integrated PayPal Orders, Vault, Captures, Disputes and Webhooks, and built the ledger, the adjudication pipeline, the MCP server and the merchant console.
 
 I validated it with automated tests, three external technical reviews whose findings I triaged and fixed, and live sandbox runs, including a real dispute that PayPal refunded.
 
@@ -223,3 +223,5 @@ Built with AI-assisted development (Claude Code); architecture, trust design and
 ## License
 
 [MIT](LICENSE)
+
+Originally built for the PayPal AI Hackathon (2026).
